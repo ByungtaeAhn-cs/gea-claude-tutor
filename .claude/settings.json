@@ -1,0 +1,8 @@
+{
+  "outputStyle": "gea-tutor",
+  "permissions": {
+    "allow": [
+      "Edit(/내_학습기록/**)"
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+Creative Commons Attribution 4.0 International License (CC BY 4.0)
+
+"다교연 클로드 코드 튜터" (gea-claude-tutor)
+Copyright (c) 2026 안병태 (ByungtaeAhn-cs)
+
+================================================================================
+
+이 저작물은 아래 원저작물을 바탕으로 재구성·확장한 2차적 저작물입니다.
+
+  "퇴직준비세미나 자율학습자료" by Baekdong Cha (차백동)
+  Korea Institute of Machinery and Materials
+  Licensed under CC BY 4.0
+  https://github.com/orientpine/retirement-seminar-self-study
+
+변경 사항: 튜터 구조를 Claude 데스크탑 앱 기준의 스킬·출력 스타일·에이전트로
+새로 설계했고, 회차 구성을 다음세대교육연합 실무자 대상으로 다시 짰으며,
+세션·컨텍스트 관리, Git·파일 관리, 개인정보, 엑셀 자동화, 원소스 멀티유즈,
+플러그인·스킬화, 에이전틱 워크플로우 회차를 새로 썼습니다. 원저작물의
+옵시디언·PARA 관련 내용은 포함하지 않았습니다. 원저작자는 이 2차적 저작물을
+보증하거나 후원하지 않습니다.
+
+================================================================================
+
+You are free to:
+
+  Share — copy and redistribute the material in any medium or format for any
+  purpose, even commercially.
+
+  Adapt — remix, transform, and build upon the material for any purpose, even
+  commercially.
+
+  The licensor cannot revoke these freedoms as long as you follow the license
+  terms.
+
+--------------------------------------------------------------------------------
+
+Under the following terms:
+
+  Attribution — You must give appropriate credit, provide a link to the
+  license, and indicate if changes were made. You may do so in any reasonable
+  manner, but not in any way that suggests the licensor endorses you or your
+  use.
+
+  No additional restrictions — You may not apply legal terms or technological
+  measures that legally restrict others from doing anything the license
+  permits.
+
+--------------------------------------------------------------------------------
+
+Notices:
+
+  You do not have to comply with the license for elements of the material in
+  the public domain or where your use is permitted by an applicable exception
+  or limitation.
+
+  No warranties are given. The license may not give you all of the permissions
+  necessary for your intended use. For example, other rights such as publicity,
+  privacy, or moral rights may limit how you use the material.
+
+================================================================================
+
+For the full legal text, visit:
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+For a human-readable summary, visit:
+https://creativecommons.org/licenses/by/4.0/
+
+================================================================================
+
+How to give attribution:
+
+  "다교연 클로드 코드 튜터" by 안병태, based on "퇴직준비세미나 자율학습자료"
+  by Baekdong Cha (차백동). Licensed under CC BY 4.0.
+  https://github.com/ByungtaeAhn-cs/gea-claude-tutor

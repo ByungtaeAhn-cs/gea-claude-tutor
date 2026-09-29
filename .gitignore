@@ -1,0 +1,19 @@
+# 학습자 개인 기록과 실습 결과는 올리지 않음 (안내 README만 유지)
+내_학습기록/*
+!내_학습기록/README.md
+실습공간/*
+!실습공간/README.md
+
+# 로컬 설정
+.claude/settings.local.json
+
+# 운영체제·도구 부산물
+.DS_Store
+Thumbs.db
+desktop.ini
+__pycache__/
+*.pyc
+~$*
+
+# 도구 상태 폴더 (로컬 경로 포함)
+.omc/

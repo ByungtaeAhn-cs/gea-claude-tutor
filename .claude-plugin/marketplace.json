@@ -1,0 +1,17 @@
+{
+  "name": "gea-claude-tutor",
+  "description": "다교연 클로드 코드 튜터의 플러그인 마켓플레이스 — 어느 폴더에서나 쓰는 '딸깍' 도구 모음",
+  "owner": {
+    "name": "안병태",
+    "url": "https://github.com/ByungtaeAhn-cs"
+  },
+  "plugins": [
+    {
+      "name": "gea-toolkit",
+      "source": "./plugins/gea-toolkit",
+      "description": "인수인계 메모(handoff), 먼저 조사하고 인터뷰하기(research-first), 쉽게 설명하기(eli5), 스스로 검토하기(self-review) — 초보자용 딸깍 도구 4종",
+      "category": "productivity",
+      "tags": ["korean", "beginner", "handoff", "eli5", "review"]
+    }
+  ]
+}

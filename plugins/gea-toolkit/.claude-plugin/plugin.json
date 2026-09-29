@@ -1,0 +1,14 @@
+{
+  "name": "gea-toolkit",
+  "displayName": "다교연 딸깍 도구 모음",
+  "version": "1.0.0",
+  "description": "인수인계 메모, 먼저 조사하고 인터뷰하기, 쉽게 설명하기, 스스로 검토하기 — 어느 폴더에서나 쓰는 초보자용 딸깍 도구 4종",
+  "author": {
+    "name": "안병태",
+    "url": "https://github.com/ByungtaeAhn-cs"
+  },
+  "homepage": "https://github.com/ByungtaeAhn-cs/gea-claude-tutor",
+  "repository": "https://github.com/ByungtaeAhn-cs/gea-claude-tutor",
+  "license": "CC-BY-4.0",
+  "keywords": ["korean", "beginner", "handoff", "eli5", "review", "research"]
+}
