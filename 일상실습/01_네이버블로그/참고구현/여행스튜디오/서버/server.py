@@ -2171,7 +2171,7 @@ class 처리기(BaseHTTPRequestHandler):
             발행연동.모듈(서버설정.스튜디오)
             if 발행연동.처리할주소(self.path):
                 return self._공용으로(방식)
-            if 경로.startswith(("/api/발행/", "/api/확장연결")):
+            if 경로.startswith(("/api/발행/", "/api/확장연결/")) or 경로 == "/api/확장연결":  # 공용 PublishAPI.handles 와 같은 경계
                 raise 요청오류(503, "공용 발행 모듈(공용/발행서버.py v2)을 찾지 못했어요. 'python 공용가져오기.py'로 복사해 주세요.", 코드="준비중")
             self._보안확인(경로, 방식)
             if 방식 == "OPTIONS":
