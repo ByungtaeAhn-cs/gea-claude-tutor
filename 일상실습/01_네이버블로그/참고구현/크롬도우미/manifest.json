@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "블로그 도우미 (네이버 글 채우기)",
+  "short_name": "블로그 도우미",
+  "version": "0.4.0",
+  "description": "내 PC의 서버(127.0.0.1:8765)에서 받은 글을 네이버 블로그 글쓰기 화면에 채우고 임시저장합니다. 외부 전송 없음. Chrome·Edge.",
+  "minimum_chrome_version": "111",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_title": "블로그 도우미 연결",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://blog.naver.com/*Redirect=Write*",
+        "https://blog.naver.com/*/postwrite*",
+        "https://blog.naver.com/PostWriteForm.naver*",
+        "https://blog.naver.com/GoBlogWrite.naver*"
+      ],
+      "js": [
+        "page-hook.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://blog.naver.com/*Redirect=Write*",
+        "https://blog.naver.com/*/postwrite*",
+        "https://blog.naver.com/PostWriteForm.naver*",
+        "https://blog.naver.com/GoBlogWrite.naver*"
+      ],
+      "js": [
+        "selectors.js",
+        "panel-css.js",
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "video-bridge.html"
+      ],
+      "matches": [
+        "https://blog.naver.com/*"
+      ],
+      "use_dynamic_url": true
+    }
+  ]
+}

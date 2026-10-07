@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>여행 스튜디오</title>
+<meta name="studio-key" content="">
+<script src="/먼저.js"></script>
+<link rel="icon" href="/아이콘/studio.png">
+<!-- 글꼴: 컴퓨터에 있는 한글 글꼴(맑은 고딕·Apple SD 고딕 Neo) — 외부(구글 글꼴)로 요청하지 않음 -->
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<a class="건너뛰기" href="#본문">본문으로 건너뛰기</a>
+<header class="머리">
+  <a class="상표" href="#/">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke-width="2" aria-hidden="true"><rect x="3" y="7" width="24" height="18" rx="4"></rect><circle cx="15" cy="16" r="5"></circle><path d="M10 7l2-3h6l2 3"></path></svg>
+    <span>여행 스튜디오</span>
+  </a>
+  <nav aria-label="단계" id="단계메뉴"></nav>
+  <div class="연결묶음">
+    <div id="연결표시" class="연결" role="status"><span class="점" aria-hidden="true"></span><span id="연결글">연결 확인 중…</span></div>
+    <button type="button" id="연결단추" class="연결 연결-끊김 연결단추" hidden><span class="점" aria-hidden="true"></span><span>연결 안 됨 · Claude 연결하기</span></button>
+    <button type="button" id="테마단추" class="단추 단추-작게 테마단추"></button>
+  </div>
+</header>
+<div id="띠" class="띠자리"></div>
+<main id="본문" tabindex="-1">
+  <p class="흐림">불러오는 중…</p>
+</main>
+<div id="알림판" class="알림판" aria-live="polite"></div>
+<dialog id="창" class="창" aria-label="안내 창"></dialog>
+<script src="/app.js"></script>
+</body>
+</html>
