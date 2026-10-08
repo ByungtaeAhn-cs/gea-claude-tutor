@@ -26,6 +26,12 @@
     help=1                   도움말 패널
     prefill=1                제목이 이미 들어 있음
     placeflaky=1             장소 검색 버튼의 첫 클릭을 무시(실측: 가끔 무시됨 → 확장의 재시도 시험)
+    placespace=1|branch|dup|same  장소 검색이 띄어쓰기를 무시하고 비슷한 이름을 여럿 돌려줌(2026-10-09 실측). 가짜 작업의 장소도 바뀜:
+                             1 = '성산 일출봉'·'오설록 티뮤지엄', branch = '바다 카페'(가상 — 지점 여럿), dup = '성산 일출봉'('성산일출봉'이 2곳),
+                             same = '성산일출봉'·'오설록 티뮤지엄'(이름이 정확히 같은 '성산일출봉'이 2곳)
+    cat=missing              카테고리 목록에 '여행'이 없음(낙서장·포토로그·스크랩·일상 — 2026-10-09 실측 블로그 모양)
+    mode=reserve             가짜 작업의 모드를 '예약발행'으로(예약 조건은 안 맞으므로 단계는 저장까지)
+    caption=dead|none        사진 설명 칸이 글을 받지 않음 / 설명 칸이 없음(설명을 못 넣었을 때의 보고 시험)
     vup=600 · venc=900       동영상 업로드 · 대표 이미지 추출 흉내 시간(ms)
     vlate=300                동영상 창 틀이 뜬 뒤 업로더 내용이 그려지기까지(ms)
     vfail=1                  첫 동영상 업로드 실패(주의 아이콘)
@@ -147,6 +153,10 @@
     popup: q.get('popup') || '',
     help: q.get('help') === '1',
     placeflaky: q.get('placeflaky') === '1',
+    placespace: q.get('placespace') || '',
+    cat: q.get('cat') || '',
+    mode: q.get('mode') || '',
+    caption: q.get('caption') || '',
     restore: Number(q.get('restore') || 800),
     prefill: q.get('prefill') === '1',
     shell: q.get('shell') === '1' || q.has('Redirect'),
@@ -154,7 +164,9 @@
   };
   document.getElementById('mock-config').textContent = cfg.shell ? '바깥 화면(shell)' :
     'input=' + cfg.input + ', drop=' + cfg.drop + ', paste=' + cfg.paste + (cfg.popup ? ', popup=' + cfg.popup : '') +
-    (cfg.placeflaky ? ', placeflaky' : '') + (cfg.harness ? ', 하네스' : '');
+    (cfg.placeflaky ? ', placeflaky' : '') + (cfg.placespace ? ', placespace=' + cfg.placespace : '') +
+    (cfg.cat ? ', cat=' + cfg.cat : '') + (cfg.mode ? ', mode=' + cfg.mode : '') + (cfg.caption ? ', caption=' + cfg.caption : '') +
+    (cfg.harness ? ', 하네스' : '');
 
   // ── 바깥 화면: iframe#mainFrame 안에 에디터 ───────────────────────────
   if (cfg.shell) {
@@ -280,6 +292,7 @@
   }
   function applyLines(lines) {
     if (!caret) return;
+    if (caret.closest('.se-caption') && cfg.caption === 'dead') return;  // 설명 칸이 글을 안 받음(실측: 설명이 안 들어감 — 원인 미확정)
     if (isTitle(caret) || caret.closest('.se-caption')) { appendText(caret, lines.join(' ')); return; }
     var format = caretComp().getAttribute('data-format') || '본문';
     lines.forEach(function (line, i) {
@@ -316,7 +329,8 @@
       if (!img || !img.contains(n)) n.classList.remove('show');
     });
     if (img) {
-      img.querySelector('.se-caption').classList.add('show');
+      var capBox = img.querySelector('.se-caption');
+      if (capBox) capBox.classList.add('show');
       img.querySelector('.img-tools').classList.add('show');
     }
     if (p) { setCaret(p); focusBuffer(); }
@@ -402,7 +416,7 @@
     comp.insertAdjacentHTML('beforeend',
       '<div class="img-tools"><button type="button" class="se-set-rep-image-button">대표</button></div>' +
       aiMarkHtml() +
-      '<div class="se-caption"><p class="se-text-paragraph"><span class="se-placeholder">사진 설명을 입력하세요.</span></p></div>' +
+      (cfg.caption === 'none' ? '' : '<div class="se-caption"><p class="se-text-paragraph"><span class="se-placeholder">사진 설명을 입력하세요.</span></p></div>') +
       '<div class="mock-tag">(' + kindClass + ') ' + files.map(function (f) { return f.name; }).join(', ') + '</div>');
     wireAiMark(comp);
     comp.querySelector('.se-set-rep-image-button').addEventListener('click', function () {
@@ -666,6 +680,19 @@
   // 장소(멀티 첨부)
   var PLACES = [['협재해변', '제주 제주시 한림읍'], ['협재해변 카페', '제주 제주시 한림읍'], ['오설록 티뮤지엄', '제주 서귀포시 안덕면'],
     ['성산일출봉', '제주 서귀포시 성산읍'], ['카페 바다', '부산 해운대구']];
+  // 2026-10-09 실측: 진짜 검색은 띄어쓰기를 무시하고 비슷한 이름을 여럿 돌려줌('성산 일출봉' → '성산일출봉'…, '바다 카페'(가상) → 지점 여럿)
+  if (cfg.placespace) {
+    PLACES = [['성산일출봉 주차장', '제주 서귀포시 성산읍'], ['성산일출봉 매표소', '제주 서귀포시 성산읍'],
+      ['바다카페 애월점', '제주 제주시 애월읍(가상)'], ['바다카페 협재점', '제주 제주시 한림읍(가상)'],
+      ['바다커피', '제주 서귀포시(가상)']].concat(PLACES);
+    if (cfg.placespace === 'dup' || cfg.placespace === 'same') PLACES.splice(1, 0, ['성산일출봉', '(모의 — 이름이 같은 다른 곳)']);
+  }
+  function placeHit(name, qv) {
+    if (!qv) return false;
+    if (!cfg.placespace) return name.indexOf(qv) >= 0;
+    var bare = name.replace(/\s+/g, '');
+    return qv.split(/\s+/).some(function (w) { return w && bare.indexOf(w) >= 0; });  // 낱말 하나만 맞아도(띄어쓰기 무시)
+  }
   wrap.querySelector('.se-map-toolbar-button').addEventListener('click', function () {
     var picked = [];
     var pop = document.createElement('div');
@@ -690,7 +717,7 @@
       var info = pop.querySelector('.se-place-map-search-info-description');
       if (info) info.classList.remove('se-place-map-search-info-description-before-search');
       results.textContent = '';
-      PLACES.filter(function (p) { return qv && p[0].indexOf(qv) >= 0; }).forEach(function (p) {
+      PLACES.filter(function (p) { return placeHit(p[0], qv); }).forEach(function (p) {
         var li = document.createElement('li');
         li.className = 'se-place-map-search-result-item';
         li.innerHTML = '<span><strong class="se-place-map-search-result-title"></strong> <span class="mock-tag"></span></span><button type="button" class="se-place-add-button">추가</button>';
@@ -730,7 +757,9 @@
     '<div class="row">카테고리 <button type="button" class="selectbox_button__mock" data-click-area="tpb*i.category" aria-label="카테고리 목록 버튼">게시판</button>' +
       // 2026-10-08 실측: li.item__ > span.option__ > input[type=radio] + label[role=button] > span.text__ — 줄(li)을 누르면 안 바뀜
       '<div class="option_category__mock" hidden><div class="option_list_layer__mock" role="menu"><ul class="list__mock">' +
-        ['게시판', '여행', '<span class="blind">하위 카테고리</span>제주', '창조 칼럼', '일상'].map(function (n, i) {
+        // cat=missing: 2026-10-09 실측 블로그처럼 '여행'이 없음(맨 위가 기본 카테고리)
+        (cfg.cat === 'missing' ? ['낙서장', '포토로그', '스크랩', '일상']
+          : ['게시판', '여행', '<span class="blind">하위 카테고리</span>제주', '창조 칼럼', '일상']).map(function (n, i) {
           return '<li class="item__mock"><span class="option__mock">' +
             '<input type="radio" class="radio_item__mock" name="category_mock" id="cat_mock_' + i + '" role="none" tabindex="-1">' +
             '<label class="radio_label__mock" for="cat_mock_' + i + '" role="button" tabindex="0"><span class="text__mock">' + n + '</span></label></span></li>';
@@ -750,6 +779,7 @@
   wrap.appendChild(layer);
   var catBtn = layer.querySelector('.selectbox_button__mock');
   var catList = layer.querySelector('.option_category__mock');
+  if (cfg.cat === 'missing') catBtn.textContent = '낙서장';
   catBtn.addEventListener('click', function () { catList.hidden = !catList.hidden; });
   catList.addEventListener('change', function (e) {
     var r = e.target.closest('input[type="radio"]');
@@ -843,7 +873,7 @@
         if (c.querySelector('img')) {
           return { 종류: c.classList.contains('se-imageStrip') ? '콜라주' : c.classList.contains('se-imageGroup') ? '슬라이드' : '사진',
             사진: Array.prototype.map.call(c.querySelectorAll('img'), function (i) { return i.alt; }),
-            설명: text(c.querySelector('.se-caption')), 대표: c.getAttribute('data-rep') === '1', AI: c.getAttribute('data-ai') === '1' };
+            설명: c.querySelector('.se-caption') ? text(c.querySelector('.se-caption')) : null, 대표: c.getAttribute('data-rep') === '1', AI: c.getAttribute('data-ai') === '1' };
         }
         return { 종류: c.getAttribute('data-format') || '본문', 글: text(c) };
       }),
@@ -866,7 +896,10 @@
     '<div>모드: <a href="?harness=1&input=detached">분리 input</a><a href="?harness=1&input=attached">붙는 input</a>' +
       '<a href="?harness=1&input=none&drop=on">input 없음(→b)</a><a href="?harness=1&paste=trusted">paste 막힘</a></div>' +
     '<div>실측 시나리오: <a href="?harness=1&popup=draft">작성 중인 글 창</a><a href="?harness=1&placeflaky=1">장소 첫 클릭 무시</a>' +
-      '<a href="?harness=1&vfail=1">동영상 실패</a><a href="?harness=1&help=1">도움말 패널</a></div>' +
+      '<a href="?harness=1&vfail=1">동영상 실패</a><a href="?harness=1&help=1">도움말 패널</a>' +
+      '<a href="?harness=1&placespace=1">장소 띄어쓰기</a><a href="?harness=1&placespace=branch">장소 지점 여럿</a>' +
+      '<a href="?harness=1&placespace=same">장소 같은 이름 2곳</a>' +
+      '<a href="?harness=1&cat=missing">카테고리 없음</a><a href="?harness=1&caption=dead">사진 설명 안 들어감</a></div>' +
     '<label>시험 사진 <select id="h-count"><option>1</option><option selected>3</option><option>11</option></select>장</label>' +
     '<div><button type="button" data-m="auto">자동 (a→b)</button><button type="button" data-m="a">(a)만</button>' +
     '<button type="button" data-m="b">(b)만</button><button type="button" id="h-panel">글 채우기(가짜 작업)</button></div>' +
@@ -944,6 +977,13 @@
     '단계목록': ['준비', '제목', '블록 1', '블록 2', '블록 3', '블록 4', '블록 5', '블록 6', '블록 7', '블록 8', '블록 9', '태그', '카테고리', '공개설정', 'AI활용', '저장'],
     '예약': { '허용': false }, '설정': { '최소간격초': 0 },
   };
+  // 2026-10-09 실측 흉내: 주소 설정에 따라 가짜 작업의 장소·모드를 바꿈(테스트/README.md 시나리오 9~)
+  var placeBlock = fakeJob['글']['블록'].filter(function (b) { return b['종류'] === '장소'; })[0];
+  if (cfg.placespace === '1') placeBlock['장소'] = ['성산 일출봉', '오설록 티뮤지엄'];
+  if (cfg.placespace === 'branch') placeBlock['장소'] = ['바다 카페'];
+  if (cfg.placespace === 'dup') placeBlock['장소'] = ['성산 일출봉'];
+  if (cfg.placespace === 'same') placeBlock['장소'] = ['성산일출봉', '오설록 티뮤지엄'];
+  if (cfg.mode === 'reserve') fakeJob['모드'] = '예약발행';
   var reports = [];
   var claims = [];  // 패널이 '대기작업'을 물을 때 준 작업ID(없으면 null)
   var given = false;

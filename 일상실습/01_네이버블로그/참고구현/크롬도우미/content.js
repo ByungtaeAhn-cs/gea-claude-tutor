@@ -22,7 +22,7 @@
   if (globalThis.__blogHelperContentLoaded) return; // 같은 프레임에 두 번 들어오는 것 방지
   globalThis.__blogHelperContentLoaded = true;
 
-  var VERSION = '0.5.0';
+  var VERSION = '0.5.1';
   var S = globalThis.BLOG_HELPER_SELECTORS;
   if (!S) {
     console.warn('[블로그 도우미] selectors.js 가 먼저 로드되지 않았습니다.');
@@ -845,11 +845,14 @@
       throw new StepError('확인필요', '사진이 문서 끝이 아닌 곳에 들어감(커서 위치) — 화면을 확인하세요');
     }
     var comp = mine[mine.length - 1];
+    // 2026-10-09 실측: 사진 6개 모두 설명 '주의'인데 원인은 패널에만 남음 → 주의 문장에 못 넣은 이유를 함께(서버 작업 기록에 남게)
+    if (block['설명'] && !comp) notes.push('사진 설명을 넣지 못함(방금 넣은 사진을 화면에서 찾지 못함) — 사람이 넣기: “' + block['설명'] + '”');
     if (block['설명'] && comp) {
       clickEl(comp);
       await sleep(200);
       var cap = await waitFor(function () { return visibleFirst(comp, S.imageCaption); }, 2000);
       var capOk = false;
+      var capWhy = '설명 칸을 찾지 못함';
       // 2026-10-08 실측: 설명이 안 들어감(원인 미확정). 에디터가 문단을 다시 그리면 처음 잡은 요소는 떨어져 나가므로
       // 확인할 때마다 설명 칸을 다시 찾고, 방법별 결과·다른 곳에 들어갔는지를 기록(다음 실측 때 진단과 함께 봄)
       var want = norm(block['설명']).slice(0, 20);
@@ -857,6 +860,8 @@
       if (cap) {
         clickEl(cap.el);
         await sleep(200);
+        var tried = [];
+        var where = [];
         for (var i = 0; i < S.textMethods.title.length && !capOk; i++) {
           var bodyBefore = docText(doc);
           var how = insertTextOnce(doc, block['설명'], S.textMethods.title[i], false);
@@ -864,11 +869,16 @@
           var strayed = !capOk && norm(docText(doc)).indexOf(want) >= 0 && docText(doc) !== bodyBefore;
           ctx.log('사진 설명 — 방법 ' + S.textMethods.title[i] + '(' + how + '): ' + (capOk ? '들어감' : strayed ? '설명 칸이 아닌 곳에 들어감' : '반응 없음'));
           if (strayed) throw new StepError('확인필요', '사진 설명이 설명 칸이 아닌 곳에 들어감 — 화면에서 지운 뒤 [이 단계는 내가 했음 → 다음]');
+          tried.push(S.textMethods.title[i]);
+          if (where.indexOf(how) < 0) where.push(how);
         }
+        capWhy = !tried.length ? '설명 칸은 찾음 · 넣는 방법 없음' :
+          '설명 칸은 찾음 · ' + tried.join('·') + (tried.length > 1 ? ' 모두' : '') + ' 반응 없음' +
+          (where.length ? ' · 넣은 곳: ' + where.join('/') : '');
       } else {
         ctx.log('사진을 눌렀지만 설명 칸이 보이지 않음 (selectors.imageCaption)');
       }
-      if (!capOk) notes.push('사진 설명을 넣지 못함 — 사람이 넣기: “' + block['설명'] + '”');
+      if (!capOk) notes.push('사진 설명을 넣지 못함(' + capWhy + ') — 사람이 넣기: “' + block['설명'] + '”');
     }
     if (block['대표'] && comp) {
       clickEl(comp);
@@ -922,11 +932,26 @@
         items = await waitFor(freshItems, S.timing.placeSearchMs || 4000);
         if (!items && t + 1 < tries.length) ctx.log("장소 '" + name + "' 검색 결과가 아직 없음 — 다시 검색(" + tries[t + 1] + ')');
       }
-      if (!items) throw new StepError('장소없음', "'" + name + "' 검색 결과가 없음 — 장소 창이 열려 있음(사람이 고르거나 닫기)");
-      var match = items.filter(function (it) { return placeName(it) === name; })[0];
+      // 여러 곳 중 중간에서 멈추면 뒤의 장소도 사람이 같은 창에서 넣어야 하므로 이름을 함께 알림
+      var rest = names.slice(i + 1);
+      var restNote = rest.length ? '. 아직 못 넣은 장소: ' + rest.join(', ') + '(같은 창에서 찾아 [추가])' : '';
+      if (!items) throw new StepError('장소없음', "'" + name + "' 검색 결과가 없음" + restNote + ' — 장소 창이 열려 있음(사람이 고르거나 닫기)');
+      // 2026-10-09 실측: 질문 카드 답이 지도 이름과 띄어쓰기·지점명이 달라 장소를 못 붙임. 공백을 뺀 이름이 같은 후보가 딱 하나일 때만 붙임.
+      // 앞부분·일부만 같은 이름(지점이 여럿인 곳)은 붙이지 않음 — 다른 지점을 붙이는 사고 방지. 이름이 정확히 같은 곳도 둘 이상이면 고르지 않음
+      var exact = items.filter(function (it) { return placeName(it) === name; });
+      var match = exact.length === 1 ? exact[0] : null;
+      var bare = name.replace(/\s+/g, '');
+      var spaced = exact.length ? [] : items.filter(function (it) { return placeName(it).replace(/\s+/g, '') === bare; });
+      if (!exact.length && spaced.length === 1) {
+        match = spaced[0];
+        notes.push("'" + name + "' → 띄어쓰기만 다른 '" + placeName(match) + "' 붙임 — 맞는 곳인지 확인");
+      }
       if (!match) {
-        throw new StepError('장소없음', "'" + name + "'과 이름이 정확히 같은 결과가 없음. 후보: " +
-          items.slice(0, 5).map(placeName).join(', ') + ' — 장소 창이 열려 있음');
+        throw new StepError('장소없음', "'" + name + "' — " +
+          (exact.length > 1 ? '이름이 정확히 같은 결과가 하나가 아님(같은 이름이 ' + exact.length + '곳이라 고르지 않음)'
+            : '이름이 정확히 같은 결과가 없음' + (spaced.length > 1 ? '(띄어쓰기만 다른 곳이 ' + spaced.length + '곳이라 고르지 않음)' : '')) +
+          '. 후보: ' + items.slice(0, 5).map(placeName).join(', ') + restNote +
+          ' — 장소 창이 열려 있음. 후보 중 맞는 곳을 직접 골라 [추가]·[확인]한 뒤 [이 단계는 내가 했음 → 다음]');
       }
       ['mouseover', 'mouseenter', 'mousemove'].forEach(function (t) {
         match.dispatchEvent(new (doc.defaultView.MouseEvent)(t, { bubbles: t !== 'mouseenter' }));
@@ -1204,14 +1229,21 @@
     var idx = names.indexOf(name);
     if (idx < 0) {
       clickEl(btn.el); // 목록 닫기
-      throw new StepError('카테고리없음', "'" + name + "' 카테고리가 없음(이름이 정확히 같아야 함). 있는 것: " + names.join(', '));
+      // 2026-10-09 실측: 블로그에 '여행'이 없어 맨 끝 단계에서 실패 → 임시저장은 사람이 발행 전에 '발행' 설정 창에서 어차피 보므로 '주의'로 넘어감.
+      // 예약발행은 사람이 볼 틈 없이 기본 카테고리로 공개되므로 지금처럼 멈춤
+      if (ctx.job['모드'] !== '예약발행') {
+        return { 상태: '주의', 메시지: "'" + name + "' 없음 — 기본 카테고리로 둠",
+          주의: ["'" + name + "' 카테고리가 블로그에 없어 기본 카테고리로 둠 — 발행 전에 '발행' 설정 창에서 사람이 고르기. 있는 것: " + names.join(', ')] };
+      }
+      throw new StepError('카테고리없음', "'" + name + "' 카테고리가 없음(이름이 정확히 같아야 함). 있는 것: " + names.join(', ') +
+        ' — 예약하려면 카테고리를 직접 고른 뒤에만 [이 단계는 내가 했음]');
     }
     // 2026-10-08 실측: 줄(li)을 누르면 안 바뀜 — 안의 라디오(input)·라벨이 받음. 라디오는 .click()(브라우저가 change 를 만듦)
     var item = items[idx];
     var ctl = (S.categoryItemControl || []).map(function (s) { return item.querySelector(s); }).filter(Boolean)[0];
     if (ctl && ctl.tagName === 'INPUT') ctl.click(); else clickEl(ctl || item);
     var ok = await waitFor(function () { return cleanCategory(btn.el.textContent) === name; }, 2500);
-    if (!ok) throw new StepError('확인필요', "카테고리를 '" + name + "'으로 바꿨는지 확인 못 함");
+    if (!ok) throw new StepError('확인필요', "카테고리 '" + name + "' — 바뀌었는지 확인 못 함");
     return { 상태: '완료', 메시지: "카테고리 '" + name + "'" };
   }
 
@@ -1221,10 +1253,10 @@
     if (!v) return { 상태: '주의', 메시지: '공개 값 없음', 주의: ['패키지에 공개 값이 없어 네이버 기본값 그대로 — 발행 전에 사람이 확인'] };
     await openLayer(doc);
     var input = first(doc, S.visibility[v]);
-    if (!input) throw new StepError('선택자없음', "공개 설정 '" + v + "'을 찾지 못함 (selectors.visibility)");
+    if (!input) throw new StepError('선택자없음', "공개 설정 '" + v + "' — 화면에서 찾지 못함 (selectors.visibility)");
     if (!input.el.checked) input.el.click();
     var ok = await waitFor(function () { return input.el.checked; }, 2000);
-    if (!ok) throw new StepError('확인필요', "공개 설정을 '" + v + "'으로 바꿨는지 확인 못 함");
+    if (!ok) throw new StepError('확인필요', "공개 설정 '" + v + "' — 바뀌었는지 확인 못 함");
     return { 상태: '완료', 메시지: "공개 설정 '" + v + "'" };
   }
 
@@ -1283,14 +1315,15 @@
   function reserveAllowed(job) {
     var r = job['예약'] || {};
     // 2026-10-08 실측: 'AI 활용 설정'은 사람이 사진·영상마다 켬 → AI활용표시가 false 가 아닌 글은 예약 발행 안 함(서버 reserve_check 와 이중)
+    // 2026-10-09 실측: 카테고리가 비면 기본 카테고리로 공개됨 → 카테고리 값이 있는 글만(서버 reserve_check 와 이중)
     return job['모드'] === '예약발행' && r['허용'] === true && r['자동예약발행'] === true &&
-      job['글'] && job['글']['승인'] === '승인됨' && job['글']['AI활용표시'] === false && !!r['시각'];
+      job['글'] && job['글']['승인'] === '승인됨' && job['글']['AI활용표시'] === false && !!norm(job['글']['카테고리']) && !!r['시각'];
   }
 
   async function stepReserve(ctx) {
     var doc = ctx.doc;
     var job = ctx.job;
-    if (!reserveAllowed(job)) throw new StepError('예약불가', '예약 조건(모드·승인·자동예약발행 설정·AI활용표시 false)이 맞지 않아 발행하지 않음');
+    if (!reserveAllowed(job)) throw new StepError('예약불가', '예약 조건(모드·승인·자동예약발행 설정·AI활용표시 false·카테고리)이 맞지 않아 발행하지 않음');
     var k = kstParts(job['예약']['시각']);
     if (!k) throw new StepError('예약불가', '예약시각을 읽지 못함');
     await openLayer(doc);
