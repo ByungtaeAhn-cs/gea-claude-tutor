@@ -30,6 +30,8 @@
   판정(콘택트 시트 결과 합치기 — 사용자결정은 안 건드림)
     H 판정 --여행 <ID> --파일 여행/<ID>/작업/판정_1.json
   H 보기   (상태.json·쌓인 요청)
+  H 보기 목록 --여행 '<ID>' [--id p0016-p0024 | p0003,p0010] [--일차 2] [--결정 사용] [--필드 id,촬영시각,판정]
+      (목록.json 을 읽기만 하는 걸러 보기 — 서브에이전트·직접 python 대신. 여행ID 는 작은따옴표로)
 마지막 줄에 JSON 요약을 출력합니다.
 """
 from __future__ import annotations
@@ -486,7 +488,7 @@ def 판정(a):
         목록 = 고칠것읽기(목록파일)
         if 목록 is None:
             raise SystemExit("목록.json 이 없어요(먼저 사진 목록 만들기)")
-        항목들 = 목록 if isinstance(목록, list) else 목록.get("항목") or 목록.get("목록") or []
+        항목들 = 목록 if isinstance(목록, list) else ((목록.get("항목") or 목록.get("목록") or []) if isinstance(목록, dict) else [])
         바뀜, 있는id = 0, set()
         for 항목 in 항목들:
             고칠것 = 새것.get(항목.get("id"))
@@ -557,7 +559,45 @@ def 발행보기(a):
             "확장연결수": len((d.get("확장") or {}).get("연결") or [])}
 
 
+def _번호(id_):
+    import re
+    m = re.fullmatch(r"p(\d+)", str(id_))
+    return int(m.group(1)) if m else None
+
+
+def 목록보기(a):
+    """2026-10-08 실측: 목록.json 의 일부만 보려고 서브에이전트가 python -c 를 직접 돌려 승인 창이 열두 번 떴음 → 읽기 전용 걸러 보기."""
+    p = 여행폴더(a.여행)
+    목록 = 읽기(p / "목록.json")
+    if 목록 is None:
+        raise SystemExit("목록.json 이 없어요(먼저 사진 목록 만들기)")
+    항목들 = 목록 if isinstance(목록, list) else ((목록.get("항목") or 목록.get("목록") or []) if isinstance(목록, dict) else [])
+    항목들 = [x for x in 항목들 if isinstance(x, dict)]
+    if a.id:
+        고름, 범위 = set(), []
+        for 조각 in a.id.replace(" ", "").split(","):
+            앞, _, 뒤 = 조각.partition("-")
+            if 뒤 and _번호(앞) is not None and _번호(뒤) is not None:
+                범위.append((_번호(앞), _번호(뒤)))
+            elif 조각:
+                고름.add(조각)
+        항목들 = [x for x in 항목들 if x.get("id") in 고름 or any(
+            _번호(x.get("id")) is not None and 가 <= _번호(x.get("id")) <= 나 for 가, 나 in 범위)]
+    if a.일차 is not None:
+        항목들 = [x for x in 항목들 if x.get("일차") == a.일차]
+    if a.결정:
+        항목들 = [x for x in 항목들 if (x.get("사용자결정") or "미정") == a.결정]
+    필드 = [f.strip() for f in a.필드.split(",") if f.strip()]
+    한도 = 200
+    return {"전체": len(항목들), "보임": min(len(항목들), 한도),
+            "항목": [{k: x.get(k) for k in 필드} for x in 항목들[:한도]]}
+
+
 def 보기(_a):
+    if getattr(_a, "대상", None) == "목록":
+        if not _a.여행:
+            raise SystemExit("--여행 '<여행ID>' 를 알려 주세요")
+        return 목록보기(_a)
     완료됨 = {f.name for f in (작업함 / "처리완료").glob("*.json")}
     쌓임 = {종류: [f.name for f in sorted((작업함 / 종류).glob("*.json"))
                  if not f.name.startswith(".") and f.name not in 완료됨] for 종류 in ("요청", "답변")}
@@ -671,7 +711,13 @@ def main():
     q.add_argument("--편", required=True)
     q.set_defaults(함수=발행보기)
 
-    p = sub.add_parser("보기", help="상태와 쌓인 요청 보기")
+    p = sub.add_parser("보기", help="상태와 쌓인 요청 보기 / '보기 목록 --여행 …' 은 목록.json 걸러 보기(읽기 전용)")
+    p.add_argument("대상", nargs="?", choices=["목록"])
+    p.add_argument("--여행")
+    p.add_argument("--id", help="p0016-p0024 (범위) 또는 p0003,p0010 (쉼표)")
+    p.add_argument("--일차", type=int)
+    p.add_argument("--결정", choices=["미정", "사용", "대표", "제외"])
+    p.add_argument("--필드", default="id,종류,기기,촬영시각,일차,사용자결정,판정,장면설명", help="쉼표로 구분")
     p.set_defaults(함수=보기)
 
     a = ap.parse_args()

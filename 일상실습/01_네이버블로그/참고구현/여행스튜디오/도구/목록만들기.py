@@ -22,7 +22,7 @@ import re
 import sys
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -52,6 +52,34 @@ def 파일명에서(이름: str):
         return None, None
     ms = int(m.group(7)) if m.group(7) else 0
     return t, ms
+
+
+def 기간채움과점검(기간: dict, 날들: list) -> tuple[dict, str | None]:
+    """사람이 적은 기간은 덮어쓰지 않음. 빈 칸만 사진 날짜로 채우되 시작>끝이 되면 채우지 않음.
+    돌려주는 값: (채울 것, 사람에게 보일 문제 안내 또는 None). `날들`은 정렬된 date 목록."""
+    def 읽기(v):
+        try:
+            return date.fromisoformat(str(v)[:10]) if v else None
+        except ValueError:
+            return None
+    시작, 끝 = 읽기(기간.get("시작")), 읽기(기간.get("끝"))
+    채움 = {}
+    if 날들:
+        if not 기간.get("시작") and (끝 is None or 날들[0] <= 끝):
+            채움["시작"], 시작 = 날들[0].isoformat(), 날들[0]
+        if not 기간.get("끝") and (시작 is None or 날들[-1] >= 시작):
+            채움["끝"], 끝 = 날들[-1].isoformat(), 날들[-1]
+    고치기 = "화면에서 ‘기간 고치기’로 여행 기간을 고친 뒤 ‘사진 목록 다시 만들어 달라기’를 눌러 주세요"
+    문제 = None
+    if 시작 and 끝 and 시작 > 끝:
+        문제 = f"여행 기간의 시작({시작})이 끝({끝})보다 뒤예요 — {고치기}"
+    elif 날들:
+        사진 = f"{날들[0]}~{날들[-1]}"
+        if 시작 and 시작 > 날들[-1]:
+            문제 = f"여행 기간 시작({시작})이 사진 날짜({사진})보다 뒤예요 — {고치기}"
+        elif 끝 and 끝 < 날들[0]:
+            문제 = f"여행 기간 끝({끝})이 사진 날짜({사진})보다 앞이에요 — {고치기}"
+    return 채움, 문제
 
 
 def 영상메타(경로: Path) -> dict:
@@ -275,15 +303,15 @@ def 본문(실):
         강한날 = sorted(d for d in (기준날짜(v["촬영시각"], 정보) for v in 계산.values() if v["시각출처"] in 강한출처) if d)
         모든날 = sorted(d for d in (기준날짜(v["촬영시각"], 정보) for v in 계산.values()) if d)
         날들 = 강한날 or 모든날
-        채움 = {}
-        if 날들 and not 기간.get("시작"):
-            채움["시작"] = 날들[0].isoformat()
-        if 날들 and not 기간.get("끝"):
-            채움["끝"] = 날들[-1].isoformat()
+        # 2026-10-08 실측: 사람이 시작을 잘못 적었는데(사진보다 뒤) 끝만 자동으로 채워 시작>끝이 됐고, 사진 38장이 모두 '기간 밖'이 됐음
+        # → 채워서 시작>끝이 되면 채우지 않고, 기간이 사진과 안 맞으면 구체적인 안내를 요약·다음할일에 남김
+        채움, 기간문제 = 기간채움과점검(기간, 날들)
         if 채움:
             def 고치기(d):
                 g = dict(d.get("기간") or {})
-                for k, v in 채움.items():
+                # 잠근 뒤 다시 읽은 값으로 다시 판단(그 사이 사람이 화면에서 기간을 고쳤을 수 있음)
+                다시채움, _ = 기간채움과점검(g, 날들)
+                for k, v in 다시채움.items():
                     if not g.get(k):
                         g[k] = v
                 d["기간"] = g
@@ -375,13 +403,16 @@ def 본문(실):
     시계의심 = sorted({x["기기"] for x in 전체 if x["시각출처"] == "EXIF" and x["기기"] not in 보정표})
     기간밖 = [{"id": x["id"], "촬영시각": x["촬영시각"]} for x in 전체 if x["일차"] is None]
     다음 = []
+    if 기간문제:
+        다음.append(기간문제)
+        실.알림(기간문제)
     if 시계의심:
-        다음.append(f"{', '.join(시계의심)}: 시간대 정보가 없어 시계가 틀렸을 수 있어요 → 시계확인(python 도구/시계보정.py --여행 {실.여행ID} --쌍찾기)")
+        다음.append(f"{', '.join(시계의심)}: 시간대 정보가 없어 시계가 틀렸을 수 있어요 → 시계확인(python 도구/시계보정.py --여행 '{실.여행ID}' --쌍찾기)")
     if any(x["시각출처"] == "파일명" for x in 전체):
         다음.append("파일 이름 시각 사진은 '받은 시각'일 수 있어요(카톡 등) → 사진 내용으로 위치·순서를 확인하는 질문 카드")
-    if 기간밖:
+    if 기간밖 and not 기간문제:
         다음.append(f"여행 기간 밖 시각 {len(기간밖)}개 → 시계·기간 확인")
-    다음.append(f"python 도구/고르기후보.py --여행 {실.여행ID}")
+    다음.append(f"python 도구/고르기후보.py --여행 '{실.여행ID}'")
     return 실.끝({
         "사진": sum(1 for x in 전체 if x["종류"] == "사진"), "영상": sum(1 for x in 전체 if x["종류"] == "영상"),
         "HEIC": sum(1 for p in 항목들 if p.suffix.lower() in (".heic", ".heif")),
@@ -389,7 +420,7 @@ def 본문(실):
         "시각출처별": dict(Counter(x["시각출처"] for x in 전체)),
         "약한시각": 약한[:40], "시계확인필요기기": 시계의심,
         "영상시각": 영상들,
-        "기간": 정보.get("기간"), "일차별": {str(k): v for k, v in sorted(Counter(x["일차"] for x in 전체).items(), key=lambda kv: (kv[0] is None, kv[0] or 0))},
+        "기간": 정보.get("기간"), "기간문제": 기간문제, "일차별": {str(k): v for k, v in sorted(Counter(x["일차"] for x in 전체).items(), key=lambda kv: (kv[0] is None, kv[0] or 0))},
         "기간밖": 기간밖[:20],
         "LivePhoto영상제외": [p.name for p in 라이브], "건너뜀": dict(건너뜀),
         "미리보기": dict(상태), "미리보기실패": 실패[:20],

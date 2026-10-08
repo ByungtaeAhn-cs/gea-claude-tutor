@@ -98,6 +98,7 @@ globalThis.BLOG_HELPER_PANEL_CSS = `
 
 .bh-panel .bh-adv { margin-top: 4px; font-size: 12px; color: #57606a; display: block; }
 .bh-panel .bh-adv summary { cursor: pointer; display: list-item; }
+.bh-panel .bh-adv[hidden] { display: none; }
 .bh-panel .bh-log {
   max-height: 140px; overflow: auto; margin: 4px 0; padding: 6px;
   font: 11px/1.4 Consolas, "D2Coding", monospace; white-space: pre-wrap;

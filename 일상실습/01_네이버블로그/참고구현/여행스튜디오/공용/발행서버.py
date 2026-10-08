@@ -1674,6 +1674,13 @@ class JobStore:
         """예약 조건. fresh=True(누르기 직전 확인누름)면 업로드 파일 해시를 캐시 없이 다시 계산."""
         if mode != "예약발행":
             return False, ""
+        ai = pkg.data.get("AI활용표시")
+        if ai is not False:
+            # 2026-10-08 실측: 'AI 활용 설정'은 사진·영상마다 사람이 켬(확장은 누르지 않음) → 예약 발행으로는 켤 틈이 없으므로 막음
+            if ai is True:
+                return False, ("AI로 만들거나 바꾼 사진·영상이 있는 글(AI활용표시: true)은 예약 발행하지 않습니다 — "
+                               "임시저장 뒤 사람이 사진·영상마다 'AI 활용 설정'을 켜고 직접 발행하세요.")
+            return False, "예약발행에는 패키지의 'AI활용표시' 값(true/false)이 꼭 필요합니다(AI로 만든 사진·영상이 없으면 false)."
         cfg = self._cfg()
         if not cfg.get("자동예약발행"):
             return False, "자동예약발행 설정이 꺼져 있습니다(기본값). 켜기 전에 약관·보호조치 위험 안내를 확인하세요."

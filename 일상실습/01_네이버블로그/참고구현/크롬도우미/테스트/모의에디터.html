@@ -258,9 +258,15 @@
     var plain = cd && cd.getData('text/plain');
     applyLines(html ? htmlBlocks(html) : String(plain || '').split('\n'));
   });
+  // 2026-10-08 실측: 진짜 에디터는 숨은 입력 프레임의 Enter 키(keydown)로 새 문단을 만들고,
+  // execCommand('insertParagraph')는 입력 프레임만 바뀔 뿐 문단이 생기지 않음 → 같게 흉내
+  bdoc.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (caret && !isTitle(caret) && !caret.closest('.se-caption')) newParagraphAfter(caretComp(), '본문');
+  });
   bdoc.addEventListener('input', function (e) {
     if (e.inputType === 'insertText' && e.data) applyLines([e.data]);
-    else if (e.inputType === 'insertParagraph' && caret && !isTitle(caret) && !caret.closest('.se-caption')) newParagraphAfter(caretComp(), '본문');
     bdoc.body.innerHTML = '';
     try { bdoc.getSelection().collapse(bdoc.body, 0); } catch (_) { /* 무시 */ }
   });

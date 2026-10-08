@@ -3,7 +3,8 @@
  * ---------------------------------------------------------------------------
  * 각 목록은 앞에서부터 시도하고, (보이는 것이 필요한 곳은) 처음 '보이는' 것을 씁니다.
  * 이 파일을 만든 날(2026-10-07)에는 실제 네이버 화면을 열지 않았습니다(로그인 금지).
- * 아래 값은 공개 자료의 단서이며, 모두 강사 실측으로 확인해야 합니다.
+ * 2026-10-08 강사 실측(Edge 154, Windows, 실습용 비공개 블로그)으로 확인·수정한 값에는 '2026-10-08 실측'을 적었습니다.
+ * 그 밖의 값([실측 단서]·[추정]·[미실측])은 아직 실제 화면에서 쓰이지 않았거나 확인하지 않은 것입니다.
  *   [실측 단서] = 출처가 '실측했다'고 적은 값(우리가 확인한 것은 아님)
  *   [추정]      = 이름 규칙으로 짐작한 값
  *   [미실측]    = 단서가 없음. 실측 때 반드시 채울 것
@@ -34,6 +35,7 @@
 
   globalThis.BLOG_HELPER_SELECTORS = {
     // ── 1. 글쓰기 화면 주소 (manifest.json 의 matches 와 짝) ──────────────
+    //    2026-10-08 실측: blog.naver.com/{id}?Redirect=Write → iframe#mainFrame 안 PostWriteForm.naver
     writeUrl: [
       /[?&]Redirect=Write/i,              // blog.naver.com/{id}?Redirect=Write  [C1][C6]
       /\/postwrite(?:[/?#]|$)/i,          // blog.naver.com/{id}/postwrite       [C2]
@@ -42,6 +44,7 @@
     ],
 
     // ── 2. 프레임·에디터 ─────────────────────────────────────────────────
+    //    2026-10-08 실측: shellIframe·editorRoot(.se-container .se-canvas)·inputBuffer(iframe#input_buffer…) 모두 맞음
     shellIframe: ['iframe#mainFrame', 'iframe[name="mainFrame"]'],               // [C1][C6]
     editorRoot: [
       '.se-container .se-canvas',         // [C2] 2026-09
@@ -54,6 +57,7 @@
     inputBuffer: ["iframe[name^='input_buffer']", "iframe[id^='input_buffer']"],
 
     // ── 3. 제목·본문 ─────────────────────────────────────────────────────
+    //    2026-10-08 실측: title·bodyParagraph·textFormatButton 맞음(글 유형 옵션은 메뉴를 열어야 보임)
     title: ["[data-a11y-title='제목'] .se-text-paragraph", "[data-a11y-title='제목']",
             '.se-documentTitle .se-text-paragraph', '.se-section-documentTitle .se-module-text'],   // [C6][C2]
     placeholder: ['.se-placeholder'],                                                           // [C6]
@@ -71,13 +75,17 @@
     //   paste       : 숨은 입력 프레임(없으면 지금 포커스)에 paste 이벤트(clipboardData: text/html+text/plain) [C2 라이브 검증]
     //   execCommand : document.execCommand('insertText') — 브라우저가 진짜 입력 이벤트를 만듦 [추정]
     textMethods: { title: ['execCommand', 'paste'], body: ['paste', 'execCommand'] },
-    newParagraphMethods: ['execCommand'],   // execCommand('insertParagraph') [추정]
+    // 2026-10-08 실측(Edge 154): execCommand('insertParagraph')는 숨은 입력 프레임 DOM 만 바꾸고 에디터 문단은 안 생김
+    //   → 숨은 입력 프레임에 Enter 키 이벤트(keydown·keypress·keyup)로 만듦
+    newParagraphMethods: ['enter'],   // execCommand 는 입력 프레임만 어지럽히므로 빼둠
 
     // ── 4. 구분선 ────────────────────────────────────────────────────────
+    //    2026-10-08 실측: dividerButton·dividerComponent 맞음
     dividerButton: ['button.se-insert-horizontal-line-default-toolbar-button', "button[data-name='horizontal-line']"],  // [C3][C7]
     dividerComponent: ["[data-a11y-title='구분선']", '.se-component.se-horizontalLine'],                               // [추정]
 
     // ── 5. 사진(방법 a: 사진 버튼 + 파일 칸, 방법 b: 끌어다 놓기) ──────────
+    //    2026-10-08 실측: photoButton·(a) 가로채기·layoutPopup/Option/Confirm·imageComponent·imageRepresentative 맞음. 설명(imageCaption)은 칸은 찾지만 글이 안 들어감(조사 중)
     photoButton: ["button[data-name='image'].se-image-toolbar-button", 'button.se-image-toolbar-button',
                   "button[data-name='image']", 'button[title="사진"]'],                     // [C6][C1][C2]
     photoButtonEvents: ['click'],
@@ -102,25 +110,37 @@
     //            → (뜨면) 제목·설명 입력 창 → '완료' → 본문에 동영상 모듈. 전부 [미실측] — 실측 때 반드시 채울 것
     video: {
       button: ["button[data-name='video'].se-video-toolbar-button", 'button.se-video-toolbar-button', "button[data-name='video']"], // [추정] 사진 버튼 이름 규칙
-      popup: ['.se-popup-video', "[class*='video_upload']", "[class*='VideoUpload']"],                                     // [미실측]
-      addButton: ['button.se-video-add-button', "[class*='video'] button[class*='upload']", "[class*='video'] button[class*='add']"], // [미실측]
+      // 2026-10-08 실측: '동영상' → div.se-popup.se-popup-video-upload > #video-uploader-wrap(네이버 동영상 업로더 nvu_)
+      //   탭 '일반 동영상'·'360VR 동영상', 버튼 '동영상 추가'(nvu_btn_append.nvu_local)·'네이버 MYBOX'(nvu_cloud), 닫기 nvu_btn_close
+      popup: ['.se-popup-video-upload', '#video-uploader-wrap', '.se-popup-video', "[class*='video_upload']"],
+      addButton: ['button.nvu_btn_append.nvu_local', '#video-uploader-wrap button.nvu_local', 'button.se-video-add-button'],
       fileInput: ["input[type='file'][accept*='video' i]", "input[type='file'][accept*='mp4' i]"],                         // [추정]
-      processing: ['.se-video-uploading', "[class*='video'][class*='progress']", "[class*='video'][class*='encod']", "[class*='video'][class*='loading']"], // [미실측]
-      error: ['.se-video-error', "[class*='video'][class*='error']", "[class*='video'][class*='fail']"],                  // [미실측]
-      infoForm: ['.se-popup-video-info', "[class*='video'][class*='info']"],                                              // [미실측] 제목·설명 창
-      titleInput: ['input.se-video-title-input', "[class*='video'] input[placeholder*='제목']", "[class*='video'] input[name*='title' i]"],
-      descInput: ['textarea.se-video-desc-input', "[class*='video'] textarea", "[class*='video'] input[placeholder*='설명']"],
-      done: ['button.se-popup-button-confirm', "[class*='video'] button[class*='confirm']", "[class*='video'] button[class*='submit']"],
+      // 2026-10-08 실측: 파일을 넣으면 업로더가 같은 창 안에서 '목록 + 정보 입력' 모양으로 바뀜(따로 뜨는 정보 창 없음)
+      //   파일 항목 li.nvu_file_item > div.nvu_file(.nvu_step_extract 등 단계 이름 = 처리 중, 없으면 끝) > em.nvu_state("업로드 완료")
+      //   초록 진행 막대(.nvu_progress)는 끝난 뒤에도 보이므로 '처리 중' 판단에 쓰지 않음
+      fileItem: ['#video-uploader-wrap li.nvu_file_item'],
+      fileSelect: ['#video-uploader-wrap .nvu_file_list button.nvu_btn_select'],   // 누르면 오른쪽 정보 칸이 그 파일 것으로 바뀜
+      processing: ["#video-uploader-wrap .nvu_file_list .nvu_file[class*='nvu_step_']", '#video-uploader-wrap .nvu_file_list .nvu_icon_loading'],
+      error: ['#video-uploader-wrap .nvu_file_list .nvu_icon_notification'],                                            // '주의' 아이콘
+      infoForm: ['#video-uploader-wrap .nvu_meta_data', '#video-uploader-wrap .nvu_upload_form'],
+      titleInput: ['#nvu_inp_box_title', "#video-uploader-wrap input[data-logcode='lmvup.subject']"],                    // 필수, 최대 40자
+      titleMax: 40,
+      descInput: ['#nvu_inp_box_description', "#video-uploader-wrap textarea[data-logcode='lmvup.desc']"],               // '정보', 최대 300자
+      descMax: 300,
+      done: ['#video-uploader-wrap button.nvu_btn_submit'],
       doneText: ['완료', '확인', '등록'],                                   // 이 글자와 정확히 같은 버튼만 누름(짐작 클릭 방지)
       component: ["[data-a11y-title='동영상']", '.se-component.se-video', ".se-component[class*='se-video']"],             // [추정]
     },
 
     // ── 6. 장소(멀티 첨부, 1회 5곳) [C6 실측 단서][N1] ──────────────────────
+    //    2026-10-08 실측: 아래 선택자 모두 맞음(검색 버튼 클릭이 가끔 무시 → searchTries)
     place: {
       button: ["button[data-name='map']", 'button.se-map-toolbar-button'],
       popup: ['.se-popup-placesMap'],
       input: ['input.react-autosuggest__input', "input[placeholder*='장소']"],
       search: ['button.se-place-search-button'],
+      // 2026-10-08 실측: 검색 버튼 클릭이 가끔 무시됨(사람이 Enter 를 치면 결과 나옴) → 클릭·Enter 를 번갈아 시도
+      searchTries: ['click', 'enter', 'click', 'enter'],
       resultItem: ['.se-place-map-search-result-item'],
       resultName: ['.se-place-map-search-result-title', "[class*='result-title']", 'strong'],   // [추정]
       add: ['button.se-place-add-button'],          // 항목에 마우스를 올려야 보임
@@ -129,6 +149,7 @@
     },
 
     // ── 7. 발행 설정 레이어(태그·카테고리·공개·예약) [C6 실측 단서][C2] ─────
+    //    2026-10-08 실측: publishOpen(창만 엶)·publishLayer·publishConfirm(data-testid=seOnePublishBtn)·tagInput·tagChip(span.tag__)·categoryOpen·categoryItem·visibility(#open_*)·reserve.radio(#radio_time2) 맞음. publishLayerClose·reserve 날짜/시/분은 미실측
     // 여는 버튼을 눌러도 발행되지 않고 레이어만 열림. 최종 발행은 confirm 버튼.
     publishOpen: ["button[data-click-area='tpb.publish']", "button[class*='publish_btn']"],
     publishLayer: ["div[class*='layer_publish']"],
@@ -138,14 +159,16 @@
     tagChip: ["div[class*='layer_publish'] [class*='tag_item']", "div[class*='layer_publish'] [class*='tag__'] span"],  // [미실측]
     categoryOpen: ["button[data-click-area='tpb*i.category']", "button[aria-label='카테고리 목록 버튼']", "button[class*='selectbox_button']"],
     categoryItem: ["div[class*='option_category'] li[class*='item__']"],
+    // 2026-10-08 실측: li.item__ > span.option__ > input#<번호>_<이름>[type=radio] + label[role=button] > span.text__
+    categoryItemControl: ["input[type='radio']", "label[role='button']", 'label'],
     categoryChildMark: '하위 카테고리',
     visibility: {
       '전체 공개': ['#open_public'], '이웃 공개': ['#open_neighbor'],
       '서로이웃 공개': ['#open_both_neighbor'], '비공개': ['#open_private'],
     },
-    // 'AI 활용' 설정 [미실측] — 위치를 모름. 아래 선택자가 비어 있으면 글자로 찾음(라벨·버튼·스위치)
-    aiToggle: [],
-    aiText: ['AI 활용'],
+    // 'AI 활용 설정' — 2026-10-08 실측: 발행 설정 창에는 없음. 사진·콜라주·동영상 덩어리마다 스위치(사진을 선택하면 보임)
+    //   켜짐 = .se-is-selected. 확장은 누르지 않음(사람이 켬) — 진단에서 개수만 셈
+    aiMarkToggle: ['button.se-set-ai-mark-button-toggle'],
     // 예약 [N1][미실측] — 발행 시간 '예약' → 날짜·시·분(10분 단위)
     reserve: {
       radio: ['input#radio_time2', "input[name*='time'][value*='reserve' i]"],
@@ -158,6 +181,7 @@
     },
 
     // ── 8. 저장(임시저장) [C6 실측 단서] ──────────────────────────────────
+    //    2026-10-08 실측: saveButton·saveCount(aria-label '임시저장된 글 보기, N개') 맞음
     saveButton: ["button[data-click-area='tpb.save']", "button[class*='save_btn']"],
     saveCount: ["button[class*='save_count_btn']"],
     saveToast: ["[class*='toast']", "[role='alert']"],
@@ -168,7 +192,12 @@
     captcha: ["iframe[src*='captcha' i]", "img[src*='captcha' i]", '#captcha'],
     helpPanel: ["[class*='se-help-panel']"],
     helpPanelClose: ['button.se-help-panel-close-button', "[class*='se-help-panel'] button[class*='close']"],
-    blockingPopup: ['.se-popup-dim', '.se-popup'],   // '준비' 단계에서 보이면 멈춤(작성 중 글 복구 창 등)
+    // '준비' 단계에서 보이면 멈춤. 2026-10-08 실측: 새로고침하면 '작성 중인 글이 있습니다.' 창
+    //   = div.se-popup.se-popup-alert-confirm > strong.se-popup-title + [취소](새 글)·[확인](이어 쓰기)
+    blockingPopup: ['.se-popup', '.se-popup-dim'],
+    blockingPopupTitle: ['.se-popup-title'],         // 멈춤 문장에 보여 줄 창 제목
+    restorePopupText: ['작성 중인 글'],                // 이 제목의 창은 멈추지 않고 사람이 [취소]하기를 기다림(timing.restorePopupWaitMs)
+    restorePopupConfirm: ['button.se-popup-button-confirm'],   // 그 창의 [확인](이어 쓰기) — 사람이 누르면 멈춤
 
     // ── 10. 클릭·시간 ─────────────────────────────────────────────────────
     clickEvents: ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'],
@@ -180,6 +209,8 @@
       settleMs: 3000,         // 첫 사진이 보인 뒤 나머지가 보일 때까지
       verifyMs: 2500,         // 글을 넣은 뒤 화면에서 확인할 때까지
       layerMs: 6000,          // 발행 설정 레이어·팝업이 열릴 때까지
+      restorePopupWaitMs: 60000, // '작성 중인 글' 창을 사람이 닫기를 기다리는 시간(stepMs 보다 짧게)
+      placeSearchMs: 4000,    // 장소 검색 한 번에 결과를 기다리는 시간(searchTries 만큼 반복)
       stepMs: 90000,          // 단계 하나의 최대 시간(사진 단계는 4배)
       cancelWaitMs: 30000,    // 시간 초과된 단계가 실제로 멈출 때까지 기다리는 최대 시간(넘으면 그 단계가 끝날 때까지 새 작업 안 함)
       videoFetchMs: 600000,   // 동영상을 내 PC 서버에서 받는 최대 시간(10분)

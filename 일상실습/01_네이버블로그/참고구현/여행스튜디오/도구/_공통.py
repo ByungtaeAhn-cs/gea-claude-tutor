@@ -238,9 +238,13 @@ def 필요(*이름들: str):
         except ImportError:
             없음.append(pip이름.get(이름, 이름))
     if 없음:
+        # 2026-10-08 실측: 아이폰 사진(HEIC)이 있는데 pillow-heif 가 없어 첫 목록 만들기가 멈췄음 → 이유와 설치 한 줄을 먼저 알림
+        heif = ("아이폰 사진(HEIC)을 열려면 pillow-heif 가 꼭 필요해요. 터미널(Windows: PowerShell·명령 프롬프트, Mac: 터미널)에서 "
+                f"직접 한 줄 실행: {'python3' if sys.platform == 'darwin' else 'python'} -m pip install pillow-heif  → 끝나면 화면에서 다시 눌러 주세요.\n"
+                if "pillow-heif" in 없음 else "")
         raise 도구오류(
             "사진 도구에 필요한 파이썬 꾸러미가 없어요: " + ", ".join(없음),
-            힌트=(f"설치: {설치명령}\n(Mac은 python3 -m pip …, 가상환경을 쓰면 그 환경을 켠 뒤. "
+            힌트=(heif + f"전체 설치: {설치명령}\n(Mac은 python3 -m pip …, 가상환경을 쓰면 그 환경을 켠 뒤. "
                  "Python 3.12 이상 권장 — av 가 3.12 이상을 요구합니다. 인텔 Mac은 mediapipe 가 설치되지 않을 수 있어요.)"),
             코드=2, 자료={"설치필요": 없음, "설치명령": 설치명령})
     return 모듈들[0] if len(모듈들) == 1 else 모듈들
@@ -499,7 +503,7 @@ class 도구실행:
         d = 읽기_json(self.여행 / "목록.json")
         if d is None:
             if 있어야:
-                raise 도구오류("목록.json 이 아직 없어요.", 힌트=f"먼저 python 도구/목록만들기.py --여행 {self.여행ID}")
+                raise 도구오류("목록.json 이 아직 없어요.", 힌트=f"먼저 python 도구/목록만들기.py --여행 '{self.여행ID}'")
             return []
         return [x for x in 목록항목(d) if isinstance(x, dict)]
 

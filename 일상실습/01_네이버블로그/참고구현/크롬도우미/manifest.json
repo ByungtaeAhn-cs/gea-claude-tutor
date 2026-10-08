@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "블로그 도우미 (네이버 글 채우기)",
   "short_name": "블로그 도우미",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "내 PC의 서버(127.0.0.1:8765)에서 받은 글을 네이버 블로그 글쓰기 화면에 채우고 임시저장합니다. 외부 전송 없음. Chrome·Edge.",
   "minimum_chrome_version": "111",
   "permissions": [

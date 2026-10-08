@@ -22,7 +22,7 @@
   if (globalThis.__blogHelperContentLoaded) return; // 같은 프레임에 두 번 들어오는 것 방지
   globalThis.__blogHelperContentLoaded = true;
 
-  var VERSION = '0.4.0';
+  var VERSION = '0.5.0';
   var S = globalThis.BLOG_HELPER_SELECTORS;
   if (!S) {
     console.warn('[블로그 도우미] selectors.js 가 먼저 로드되지 않았습니다.');
@@ -570,7 +570,8 @@
     ['keydown', 'keypress', 'keyup'].forEach(function (type) {
       if (type === 'keypress' && key !== 'Enter') return;
       el.dispatchEvent(new view.KeyboardEvent(type, {
-        key: key, code: key, keyCode: codes[key], which: codes[key], bubbles: true, cancelable: true, composed: true,
+        key: key, code: key, keyCode: codes[key], which: codes[key], charCode: type === 'keypress' ? codes[key] : 0,
+        bubbles: true, cancelable: true, composed: true,
       }));
     });
   }
@@ -585,6 +586,24 @@
     desc.set.call(input, value);
     input.dispatchEvent(new view.Event('input', { bubbles: true }));
     input.dispatchEvent(new view.Event('change', { bubbles: true }));
+  }
+
+  /**
+   * 글자 칸(input·textarea)에 사람이 친 것처럼 넣기: 포커스 → 전체 선택 → execCommand('insertText').
+   * 2026-10-08 실측: 장소 검색칸(react-autosuggest)은 setInputValue 로는 글자만 보이고 React 상태가 안 바뀌어 검색이 안 됨.
+   * 브라우저가 만든 입력 이벤트는 React 가 확실히 받음. 안 되면 setInputValue 로.
+   */
+  function typeIntoInput(input, value) {
+    assertLive();
+    var ok = false;
+    try {
+      input.focus();
+      input.select();
+      ok = input.ownerDocument.execCommand('insertText', false, value);
+    } catch (_) { ok = false; }
+    if (ok && input.value === value) return 'execCommand';
+    setInputValue(input, value);
+    return 'setter';
   }
 
   function escapeHtml(s) {
@@ -831,13 +850,23 @@
       await sleep(200);
       var cap = await waitFor(function () { return visibleFirst(comp, S.imageCaption); }, 2000);
       var capOk = false;
+      // 2026-10-08 실측: 설명이 안 들어감(원인 미확정). 에디터가 문단을 다시 그리면 처음 잡은 요소는 떨어져 나가므로
+      // 확인할 때마다 설명 칸을 다시 찾고, 방법별 결과·다른 곳에 들어갔는지를 기록(다음 실측 때 진단과 함께 봄)
+      var want = norm(block['설명']).slice(0, 20);
+      var capText = function () { var c = first(comp, S.imageCaption); return c ? textOf(c.el) : ''; };
       if (cap) {
         clickEl(cap.el);
         await sleep(200);
         for (var i = 0; i < S.textMethods.title.length && !capOk; i++) {
-          insertTextOnce(doc, block['설명'], S.textMethods.title[i], false);
-          capOk = !!(await waitFor(function () { return textOf(cap.el).indexOf(norm(block['설명']).slice(0, 20)) >= 0; }, S.timing.verifyMs));
+          var bodyBefore = docText(doc);
+          var how = insertTextOnce(doc, block['설명'], S.textMethods.title[i], false);
+          capOk = !!(await waitFor(function () { return capText().indexOf(want) >= 0; }, S.timing.verifyMs));
+          var strayed = !capOk && norm(docText(doc)).indexOf(want) >= 0 && docText(doc) !== bodyBefore;
+          ctx.log('사진 설명 — 방법 ' + S.textMethods.title[i] + '(' + how + '): ' + (capOk ? '들어감' : strayed ? '설명 칸이 아닌 곳에 들어감' : '반응 없음'));
+          if (strayed) throw new StepError('확인필요', '사진 설명이 설명 칸이 아닌 곳에 들어감 — 화면에서 지운 뒤 [이 단계는 내가 했음 → 다음]');
         }
+      } else {
+        ctx.log('사진을 눌렀지만 설명 칸이 보이지 않음 (selectors.imageCaption)');
       }
       if (!capOk) notes.push('사진 설명을 넣지 못함 — 사람이 넣기: “' + block['설명'] + '”');
     }
@@ -877,15 +906,22 @@
       var input = await waitFor(function () { return visibleFirst(popup.el, S.place.input); }, S.timing.layerMs);
       if (!input) throw new StepError('선택자없음', '장소 검색칸을 찾지 못함');
       var oldItems = allOf(popup.el, S.place.resultItem);
-      setInputValue(input.el, name);
+      ctx.log('장소 검색칸 입력 — 방법 ' + typeIntoInput(input.el, name));
       await sleep(300);
-      var search = visibleFirst(popup.el, S.place.search);
-      if (search) clickEl(search.el); else pressKey(input.el, 'Enter');
-      var items = await waitFor(function () {
+      var freshItems = function () {
         var it = allOf(popup.el, S.place.resultItem);
         var fresh = it.filter(function (n) { return oldItems.indexOf(n) < 0; });
         return fresh.length ? fresh : null;
-      }, 6000);
+      };
+      // 2026-10-08 실측: 글자가 들어가도 검색 버튼 클릭이 가끔 무시됨(창이 막 열렸을 때 등) → 클릭·Enter 를 번갈아 재시도
+      var tries = S.place.searchTries || ['click', 'enter'];
+      var items = null;
+      for (var t = 0; t < tries.length && !items; t++) {
+        var search = visibleFirst(popup.el, S.place.search);
+        if (tries[t] === 'click' && search) clickEl(search.el); else pressKey(input.el, 'Enter');
+        items = await waitFor(freshItems, S.timing.placeSearchMs || 4000);
+        if (!items && t + 1 < tries.length) ctx.log("장소 '" + name + "' 검색 결과가 아직 없음 — 다시 검색(" + tries[t + 1] + ')');
+      }
       if (!items) throw new StepError('장소없음', "'" + name + "' 검색 결과가 없음 — 장소 창이 열려 있음(사람이 고르거나 닫기)");
       var match = items.filter(function (it) { return placeName(it) === name; })[0];
       if (!match) {
@@ -947,7 +983,8 @@
       if (!got) throw new StepError('선택자없음', "'동영상'을 눌렀지만 업로드 창·파일 칸이 나타나지 않음 (selectors.video.popup)");
       var input = got.tagName ? got : findNew();
       if (!input) {
-        var add = visibleFirst(got.el, S.video.addButton);
+        // 2026-10-08 실측: 창 틀(se-popup-video-upload)이 먼저 뜨고 업로더(nvu_) 내용은 조금 늦게 그려짐 → 버튼을 기다림
+        var add = await waitFor(function () { return visibleFirst(got.el, S.video.addButton); }, S.timing.layerMs);
         if (!add) throw new StepError('선택자없음', "동영상 업로드 창에서 '동영상 추가' 버튼을 찾지 못함 (selectors.video.addButton)");
         log("업로드 창의 '동영상 추가'를 누름");
         clickEl(add.el);
@@ -963,6 +1000,19 @@
       disarm();
       throw err;
     }
+  }
+
+  /**
+   * 동영상 하나의 제목(네이버 업로더에서 필수, 최대 40자).
+   * 블록 '제목'이 목록이면 순서대로, 글자 하나면 여러 개일 때 뒤에 번호(" 1", " 2"), 없으면 글 제목.
+   */
+  function videoTitle(block, postTitle, index, total) {
+    var max = S.video.titleMax || 40;
+    var t = block['제목'];
+    if (Array.isArray(t)) return norm(t[index] || t[t.length - 1] || postTitle || '동영상').slice(0, max) || '동영상';
+    var base = norm(t || postTitle || '동영상');
+    var suffix = total > 1 ? ' ' + (index + 1) : '';
+    return base.slice(0, max - suffix.length) + suffix;
   }
 
   /**
@@ -1005,9 +1055,14 @@
       while (!outcome) {
         assertLive();
         var bad = visibleFirst(doc, S.video.error);
-        if (bad) throw new StepError('확인필요', '네이버가 동영상 처리 중 오류를 보여 줌: “' + norm(bad.el.textContent).slice(0, 60) + '” — 화면을 확인하세요');
+        if (bad) {
+          var badItem = bad.el.closest('li') || bad.el;
+          throw new StepError('확인필요', '네이버가 동영상 처리 중 문제를 표시함: “' + norm(badItem.textContent).slice(0, 60) + '” — 화면을 확인하세요');
+        }
         var busy = visibleFirst(doc, S.video.processing);
-        var info = busy ? null : visibleFirst(doc, S.video.infoForm);
+        // 업로더 목록에 이번 파일이 다 올라온 뒤에만 '끝남'으로 봄(넣은 직후 목록이 그려지기 전과 구별)
+        var listed = (S.video.fileItem || []).length ? allOf(doc, S.video.fileItem).length >= files.length : true;
+        var info = busy || !listed ? null : visibleFirst(doc, S.video.infoForm);
         var added = allOf(doc, S.video.component).filter(function (n) { return beforeSet.indexOf(n) < 0; });
         if (info) outcome = { info: info };
         else if (!busy && added.length >= files.length) outcome = { added: added };
@@ -1023,19 +1078,27 @@
         if (!outcome) await sleep(500);
       }
       if (outcome.info) {
-        // 제목·설명 입력 창 [미실측] — 블록에 값이 있을 때만 넣고, 이름이 정확히 '완료' 등인 버튼만 누름
+        // 제목·정보 칸(2026-10-08 실측: 업로더 안, 제목 필수) — 파일마다 목록에서 골라 넣고, 이름이 정확히 '완료' 등인 버튼만 누름
         var form = outcome.info.el;
-        if (block['제목']) {
-          var ti = visibleFirst(form, S.video.titleInput);
-          if (ti) setInputValue(ti.el, block['제목']); else notes.push('동영상 제목 칸을 찾지 못함 — 사람이 넣기: “' + block['제목'] + '”');
+        var rounds = Math.max(1, Math.min(allOf(doc, S.video.fileSelect || []).length, files.length));
+        for (var k = 0; k < rounds; k++) {
+          var selects = allOf(doc, S.video.fileSelect || []);   // 고를 때마다 목록이 다시 그려질 수 있어 매번 다시 찾음
+          if (selects.length > 1 && selects[k]) { clickEl(selects[k]); await sleep(400); }
+          var vt = videoTitle(block, ctx.job['글']['제목'], g + k, all.length);
+          var ti = visibleFirst(doc, S.video.titleInput);
+          if (ti && vt) typeIntoInput(ti.el, vt);
+          else if (!ti) notes.push('동영상 제목 칸을 찾지 못함 — 사람이 넣기: “' + vt + '”');
+          else notes.push('동영상 ' + (g + k + 1) + '의 제목이 비어 있음(네이버 필수) — 사람이 넣기');
+          if (block['설명']) {
+            var di = visibleFirst(doc, S.video.descInput);
+            var desc = String(block['설명']).slice(0, S.video.descMax || 300);
+            if (di) typeIntoInput(di.el, desc); else notes.push('동영상 정보 칸을 찾지 못함 — 사람이 넣기: “' + desc + '”');
+          }
         }
-        if (block['설명']) {
-          var di = visibleFirst(form, S.video.descInput);
-          if (di) setInputValue(di.el, block['설명']); else notes.push('동영상 설명 칸을 찾지 못함 — 사람이 넣기: “' + block['설명'] + '”');
-        }
-        var doneBtn = allOf(form, S.video.done.concat(['button'])).filter(function (b) {
-          return isVisible(b) && (S.video.doneText || []).indexOf(norm(b.textContent)) >= 0;
-        })[0];
+        var wrap = form.closest('#video-uploader-wrap') || form;
+        var isDone = function (b) { return isVisible(b) && (S.video.doneText || []).indexOf(norm(b.textContent)) >= 0; };
+        // 정해진 '완료' 버튼(nvu_btn_submit)을 먼저, 없을 때만 글자가 정확히 같은 버튼(앞쪽 알림 창 버튼이 먼저 잡히지 않게)
+        var doneBtn = allOf(wrap, S.video.done).filter(isDone)[0] || allOf(wrap, ['button']).filter(isDone)[0];
         if (!doneBtn) throw new StepError('선택자없음', "동영상 정보 창의 '완료' 버튼을 찾지 못함 — 사람이 마무리한 뒤 [이 단계는 내가 했음]");
         clickEl(doneBtn);
         var added2 = await waitFor(function () {
@@ -1106,7 +1169,7 @@
     var have = chipTexts(doc);
     for (var i = 0; i < tags.length; i++) {
       if (have.indexOf(tags[i]) >= 0) continue;
-      setInputValue(input.el, tags[i]);
+      typeIntoInput(input.el, tags[i]);
       pressKey(input.el, 'Enter');
       await sleep(250);
     }
@@ -1140,7 +1203,10 @@
       clickEl(btn.el); // 목록 닫기
       throw new StepError('카테고리없음', "'" + name + "' 카테고리가 없음(이름이 정확히 같아야 함). 있는 것: " + names.join(', '));
     }
-    clickEl(items[idx]);
+    // 2026-10-08 실측: 줄(li)을 누르면 안 바뀜 — 안의 라디오(input)·라벨이 받음. 라디오는 .click()(브라우저가 change 를 만듦)
+    var item = items[idx];
+    var ctl = (S.categoryItemControl || []).map(function (s) { return item.querySelector(s); }).filter(Boolean)[0];
+    if (ctl && ctl.tagName === 'INPUT') ctl.click(); else clickEl(ctl || item);
     var ok = await waitFor(function () { return cleanCategory(btn.el.textContent) === name; }, 2500);
     if (!ok) throw new StepError('확인필요', "카테고리를 '" + name + "'으로 바꿨는지 확인 못 함");
     return { 상태: '완료', 메시지: "카테고리 '" + name + "'" };
@@ -1159,45 +1225,18 @@
     return { 상태: '완료', 메시지: "공개 설정 '" + v + "'" };
   }
 
-  /** 'AI 활용' 설정 찾기: 선택자가 있으면 그것, 없으면 글자로(라벨·버튼·스위치) */
-  function findAiToggle(doc) {
-    var direct = first(doc, S.aiToggle);
-    var layer = visibleFirst(doc, S.publishLayer);
-    // 짐작 클릭을 막으려고: 발행 설정 창 안의 '라벨+체크' 또는 스위치·체크 역할 요소만(일반 버튼은 안 봄)
-    var nodes = direct ? [direct.el] : (layer ? allOf(layer.el, ['label', '[role="switch"]', '[role="checkbox"]', 'input[type="checkbox"]']) : []).filter(function (n) {
-      var t = norm(n.textContent + ' ' + (n.getAttribute('aria-label') || ''));
-      return (S.aiText || []).some(function (w) { return t.indexOf(w) >= 0; });
-    });
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      if (n.tagName === 'LABEL') {
-        var input = n.control || n.querySelector('input');
-        if (input) return { isOn: function () { return input.checked; }, toggle: function () { input.click(); }, el: n };
-      } else if (n.tagName === 'INPUT') {
-        return { isOn: function () { return n.checked; }, toggle: function () { n.click(); }, el: n };
-      } else {
-        return {
-          isOn: function () { return n.getAttribute('aria-checked') === 'true' || n.getAttribute('aria-pressed') === 'true'; },
-          toggle: function () { clickEl(n); }, el: n,
-        };
-      }
-    }
-    return null;
-  }
-
+  /**
+   * 'AI 활용 설정' — 2026-10-08 실측: 글 전체 설정은 없고 사진·콜라주·동영상 덩어리마다 스위치가 있음
+   * (사진을 선택하면 사진 위 div.se-set-ai-mark-button, 켜짐 = button.se-set-ai-mark-button-toggle.se-is-selected,
+   *  동영상은 업로더 안에도 영상별 스위치). 어떤 사진이 AI로 만든 것인지는 사람이 가장 잘 알므로
+   * 확장은 스위치를 건드리지 않고, AI활용표시가 true 인 글에서 사람이 켜도록 '주의'로 안내만 함(강사 결정 2026-10-08).
+   */
   async function stepAi(ctx) {
-    var doc = ctx.doc;
     var flag = ctx.job['글']['AI활용표시'];
     if (flag === false) return { 상태: '건너뜀', 메시지: '패키지의 AI활용표시가 false' };
-    if (flag == null) return { 상태: '주의', 메시지: 'AI활용표시 값 없음', 주의: ["패키지에 AI활용표시 값이 없어 'AI 활용' 설정을 건드리지 않음"] };
-    await openLayer(doc);
-    var t = findAiToggle(doc);
-    if (!t) throw new StepError('선택자없음', "'AI 활용' 설정을 찾지 못함 — 위치 실측 필요. 사람이 켜고 [이 단계는 내가 했음]");
-    if (t.isOn()) return { 상태: '완료', 메시지: "'AI 활용' 이미 켜짐" };
-    t.toggle();
-    var ok = await waitFor(function () { return t.isOn(); }, 2000);
-    if (!ok) throw new StepError('확인필요', "'AI 활용' 설정이 켜졌는지 확인 못 함");
-    return { 상태: '완료', 메시지: "'AI 활용' 켬" };
+    if (flag == null) return { 상태: '주의', 메시지: 'AI활용표시 값 없음', 주의: ["패키지에 AI활용표시 값이 없음 — AI로 만든 사진·영상이 있으면 사람이 사진·영상마다 'AI 활용 설정'을 켜기"] };
+    return { 상태: '주의', 메시지: "'AI 활용 설정'은 사람이",
+      주의: ["AI로 만들거나 바꾼 사진·영상을 하나씩 클릭해 사진 위 'AI 활용 설정' 스위치를 켜기(확장은 건드리지 않음)"] };
   }
 
   function readSaveCount(doc) {
@@ -1240,14 +1279,15 @@
 
   function reserveAllowed(job) {
     var r = job['예약'] || {};
+    // 2026-10-08 실측: 'AI 활용 설정'은 사람이 사진·영상마다 켬 → AI활용표시가 false 가 아닌 글은 예약 발행 안 함(서버 reserve_check 와 이중)
     return job['모드'] === '예약발행' && r['허용'] === true && r['자동예약발행'] === true &&
-      job['글'] && job['글']['승인'] === '승인됨' && !!r['시각'];
+      job['글'] && job['글']['승인'] === '승인됨' && job['글']['AI활용표시'] === false && !!r['시각'];
   }
 
   async function stepReserve(ctx) {
     var doc = ctx.doc;
     var job = ctx.job;
-    if (!reserveAllowed(job)) throw new StepError('예약불가', '예약 조건(모드·승인·자동예약발행 설정)이 맞지 않아 발행하지 않음');
+    if (!reserveAllowed(job)) throw new StepError('예약불가', '예약 조건(모드·승인·자동예약발행 설정·AI활용표시 false)이 맞지 않아 발행하지 않음');
     var k = kstParts(job['예약']['시각']);
     if (!k) throw new StepError('예약불가', '예약시각을 읽지 못함');
     await openLayer(doc);
@@ -1332,7 +1372,39 @@
     }
     var pop = visibleFirst(doc, S.blockingPopup);
     if (pop && !isOurs(pop.el)) {
-      throw new StepError('팝업', '에디터 위에 창이 떠 있음: “' + norm(pop.el.textContent).slice(0, 40) + '” — 사람이 닫고 [이 단계부터 다시]');
+      var box = pop.el.closest('.se-popup') || pop.el;
+      var popTitle = (S.blockingPopupTitle || []).map(function (s) { return box.querySelector(s); }).filter(Boolean)[0];
+      var label = norm((popTitle || box).textContent).slice(0, 40);
+      // 2026-10-08 실측: 새로고침·로그인 뒤 '작성 중인 글이 있습니다.' 창이 자주 뜸 → 실패로 끝내지 않고 사람이 닫기를 기다림.
+      //   [취소]로 에디터가 새로 그려지면 새 패널이 같은 작업을 '재개'로 받아 처음부터(빈 화면) 다시 시작함(handleResume)
+      if ((S.restorePopupText || []).some(function (w) { return label.indexOf(w) >= 0; })) {
+        if (ctx.status) ctx.status("네이버 '" + label + "' 창이 떠 있습니다. [취소]를 누르면 새 글로 이어서 채웁니다([확인]은 예전 글을 불러오므로 멈춤).");
+        // 사람이 [확인](이어 쓰기)을 눌렀는지 직접 봄 — 예전 글이 늦게 불러와져 새 글과 섞이지 않게(사람 클릭만)
+        var chose = { restore: false };
+        var onPick = function (e) {
+          if (!e.isTrusted || !e.target || !e.target.closest) return;
+          var btn = e.target.closest('button');
+          if (btn && btn.closest('.se-popup') && (S.restorePopupConfirm || []).some(function (q) { return btn.matches(q); })) chose.restore = true;
+        };
+        doc.addEventListener('click', onPick, true);
+        var gone;
+        try {
+          gone = await waitFor(function () {
+            var p = visibleFirst(doc, S.blockingPopup);
+            return !p || isOurs(p.el) ? true : null;
+          }, S.timing.restorePopupWaitMs || 60000);
+        } finally {
+          doc.removeEventListener('click', onPick, true);
+        }
+        if (!gone) throw new StepError('팝업', '에디터 위에 창이 떠 있음: “' + label + '” — 사람이 [취소]로 닫고 [이 단계부터 다시]');
+        if (chose.restore) {
+          throw new StepError('에디터비어있지않음', "'" + label + "' 창에서 [확인](이어 쓰기)을 골라 예전 글을 불러왔습니다 — 새 글로 하려면 새로고침 뒤 [취소]");
+        }
+        notes.push("'" + label + "' 창을 사람이 닫음([취소])");
+        await sleep(1500);   // 불러오기가 늦게 끝나는 경우 대비 — 아래 빈 화면 검사로 한 번 더 막음
+      } else {
+        throw new StepError('팝업', '에디터 위에 창이 떠 있음: “' + label + '” — 사람이 닫고 [이 단계부터 다시]');
+      }
     }
     if (!titleEl(doc)) throw new StepError('선택자없음', '제목 칸을 찾지 못함 (selectors.title)');
     if (ctx.resume) {
@@ -1829,7 +1901,7 @@
   }
 
   var DIAG_NOT_SELECTORS = { writeUrl: 1, textMethods: 1, newParagraphMethods: 1, clickEvents: 1, photoButtonEvents: 1,
-    barrierText: 1, aiText: 1, doneText: 1, timing: 1, layoutText: 1 };
+    barrierText: 1, doneText: 1, timing: 1, layoutText: 1, searchTries: 1, categoryItemControl: 1, restorePopupText: 1 };
   function diagSelectors(editorDoc, topDoc) {
     var out = {};
     var count = function (doc, sel) {
@@ -2124,6 +2196,12 @@
       showJob(job);
       var plan = job['단계목록'] || [];
       var at = job['현재단계'] || '준비';
+      // '준비'에서 끊겼고(예: '작성 중인 글' 창을 [취소]해 에디터가 새로 그려짐) 화면이 비어 있으면 아직 넣은 것이 없으므로 처음부터
+      var prepLast = (job['단계'] || []).filter(function (x) { return x['이름'] === '준비'; })[0];
+      if (at === '준비' && !(prepLast && prepLast['상태'] === '실패') && !titleText(doc) && bodyIsEmpty(doc)) {
+        startCountdown(job);
+        return;
+      }
       var last = (job['단계'] || []).filter(function (x) { return x['이름'] === at; })[0];
       if (last && ['완료', '주의', '사람', '건너뜀'].indexOf(last['상태']) >= 0 && plan.indexOf(at) >= 0 && plan.indexOf(at) < plan.length - 1) {
         at = plan[plan.indexOf(at) + 1];

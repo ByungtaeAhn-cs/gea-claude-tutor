@@ -3,6 +3,7 @@
 
 복사하는 것: 미리보기.py · 템플릿.html(네이버식 미리보기) · 발행서버.py(사진 묶음·발행 작업) ·
             발행묶음_API.md · 발행API.md(있으면)
+         + 문서/여행스튜디오_규약.md (교재의 규약 — Claude 가 스튜디오 밖을 뒤지지 않도록 안에 둔 사본)
 공용 파일이 바뀌면(교재 업데이트) 스튜디오 화면 위쪽에 '공용 파일 갱신 필요'가 뜹니다.
 **사람이** 화면의 [공용 파일 갱신]을 누르거나 이 파일을 직접 실행합니다. Claude 가 실행하지 않습니다
 (공용/ 의 코드는 서버가 불러 실행하므로, 원본을 바꿔치기하면 내 PC에서 아무 코드나 돌 수 있음 — 보안 검수 H1).
@@ -33,6 +34,8 @@ from pathlib import Path
     "발행API.md": "발행API.md",
 }
 꼭필요 = {"미리보기.py", "템플릿.html", "발행서버.py"}
+규약이름 = "여행스튜디오_규약.md"       # 교재의 01_네이버블로그/ 에 있음 → 스튜디오 문서/ 안으로 복사
+규약대상 = "문서/" + 규약이름
 교재속공용 = Path("일상실습") / "01_네이버블로그" / "참고구현" / "공용"
 
 
@@ -75,6 +78,15 @@ def 원본찾기(원본: str | Path | None = None) -> tuple[Path | None, list[Pa
     return next((c for c in 찾아본곳 if 공용폴더인가(c)), None), 찾아본곳
 
 
+def 규약원본(원본: Path) -> Path | None:
+    """2026-10-08 실측: Claude 가 '../../여행스튜디오_규약.md'를 찾으려고 스튜디오 밖을 뒤져 승인 창이 여러 번 떴음 →
+    규약은 스튜디오 문서/ 안에 복사본을 두고, 이 사본만 읽게 함. 원본은 공용 폴더(…/참고구현/공용) 기준 ../../ ,
+    못 찾으면 스튜디오 옆(../../)·위쪽 폴더들의 일상실습/01_네이버블로그/."""
+    후보 = [원본.parent.parent / 규약이름, 여기.parent.parent / 규약이름]
+    후보 += [위 / "일상실습" / "01_네이버블로그" / 규약이름 for 위 in 여기.parents]
+    return next((c for c in 후보 if c.is_file() and not 스튜디오안인가(c.parent)), None)
+
+
 def _해시(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
@@ -91,6 +103,10 @@ def 비교(원본: Path) -> dict:
             continue
         dst = 여기 / "공용" / 이름
         결과["같음" if dst.is_file() and _해시(src) == _해시(dst) else "복사"].append(이름)
+    규약 = 규약원본(원본)  # 없으면 건너뜀(있을 때만 최신으로)
+    if 규약:
+        dst = 여기 / 규약대상
+        결과["같음" if dst.is_file() and _해시(규약) == _해시(dst) else "복사"].append(규약대상)
     return 결과
 
 
@@ -107,6 +123,12 @@ def 복사(원본: Path) -> dict:
         임시 = 대상 / f".{이름}.가져오는중"
         shutil.copy2(src, 임시)
         임시.replace(대상 / 이름)
+    if 규약대상 in 결과["복사"]:
+        문서 = 여기 / "문서"
+        문서.mkdir(exist_ok=True)
+        임시 = 문서 / f".{규약이름}.가져오는중"
+        shutil.copy2(규약원본(원본), 임시)
+        임시.replace(여기 / 규약대상)
     return 결과
 
 

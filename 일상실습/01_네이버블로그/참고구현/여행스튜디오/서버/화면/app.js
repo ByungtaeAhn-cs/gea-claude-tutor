@@ -518,6 +518,39 @@ function 여행카드(t) {
       <a class="단추" href="${갈곳}">이어서 하기<span class="숨김글"> — ${h(t.이름)}</span></a>
     </div></article>`;
 }
+// 2026-10-08 실측: 여행 기간을 고칠 곳을 못 찾아 헤맸음(여행정보.json 을 직접 열어야 하는 줄 앎) → 사진 화면 위에 '기간 고치기'를 둠
+function 기간판(정보, 항목 = []) {
+  const 시작 = 정보.기간?.시작 || '', 끝 = 정보.기간?.끝 || '';
+  const 뒤집힘 = 시작 && 끝 && 시작 > 끝;
+  const 기간밖 = 항목.length > 0 && 항목.every((x) => (x.일차 ?? null) === null);
+  const 경고 = 뒤집힘 ? `여행 시작일(${시작})이 끝나는 날(${끝})보다 뒤예요. 날짜를 고쳐 주세요.`
+    : 기간밖 ? '사진이 모두 여행 기간 밖으로 잡혔어요. 여행 기간(특히 시작일)이 맞는지 확인해 주세요.' : '';
+  return `<div class="${경고 ? '띠 띠-끊김' : '띠 띠-안내'}"><span>여행 기간: <b>${h(기간글(정보.기간) || '아직 없음(사진 날짜로 자동)')}</b>${경고 ? ` — ${h(경고)} 고친 뒤 ‘사진 목록 다시 만들어 달라기’를 눌러 주세요.` : ''}</span>
+    <button type="button" class="단추" data-할일="기간창" data-시작="${h(시작)}" data-끝="${h(끝)}">기간 고치기</button></div>`;
+}
+function 기간창(b) {
+  const id = 앱.여행ID;
+  const d = 창열기(`<form id="기간폼" class="창폼">
+    <h2>여행 기간 고치기</h2>
+    <label class="입력묶음">시작일<input class="입력" type="date" name="시작" value="${h(b.dataset.시작 || '')}"></label>
+    <label class="입력묶음">끝나는 날<input class="입력" type="date" name="끝" value="${h(b.dataset.끝 || '')}"></label>
+    <p class="흐림작게" style="margin:0">비워 두면 사진 날짜로 자동으로 채워져요. 고친 뒤에는 ‘사진 목록 다시 만들어 달라기’를 눌러야 일차가 새로 계산돼요(고른 결정은 그대로).</p>
+    <p id="기간상태" class="흐림" role="status" style="margin:0"></p>
+    <div class="오른쪽"><button type="button" class="단추" data-할일="창닫기">취소</button><button type="submit" class="단추 단추-주">저장</button></div>
+  </form>`);
+  const 폼 = d.querySelector('form');
+  폼.onsubmit = async (e) => {
+    e.preventDefault();
+    const 시작 = 폼.시작.value, 끝 = 폼.끝.value;
+    if (시작 && 끝 && 시작 > 끝) { $('#기간상태').textContent = `시작일(${시작})이 끝나는 날(${끝})보다 뒤예요. 날짜를 다시 확인해 주세요.`; return; }
+    try {
+      await API('/api/여행/기간', { 여행ID: id, 시작, 끝 });
+      창닫기();
+      쪽지('여행 기간을 고쳤어요. 이제 ‘사진 목록 다시 만들어 달라기’를 눌러 주세요.');
+      await 화면그리기();
+    } catch (err) { $('#기간상태').textContent = err.message; }
+  };
+}
 function 새여행창() {
   const d = 창열기(`<form id="새여행폼" class="창폼">
     <h2>새 여행 만들기</h2>
@@ -563,6 +596,7 @@ const 타임라인화면 = {
     if (!d.목록.목록있음) {
       return `<section class="머리줄"><div><h1 class="중간제목">${h(이름)} · 사진 목록</h1>
         <p class="설명">원본 폴더: <code>${h(원본 || '(없음)')}</code> — 원본은 읽기만 해요.</p></div></section>
+        ${기간판(정보)}
         <section class="판 빈판">
           <h2>아직 사진 목록이 없어요</h2>
           <p class="본문글">Claude가 원본 폴더를 읽어 촬영 시각·장소·기기를 정리하고, 화면에서 볼 작은 사본(미리보기·썸네일)을 만들어요. 원본은 고치거나 옮기지 않아요.</p>
@@ -591,6 +625,7 @@ const 타임라인화면 = {
         <button type="button" class="단추 단추-주" data-할일="요청" data-종류="구성안">고르기 끝 → 구성안 받기</button>
       </div>
     </section>
+    ${기간판(정보, 항목)}
     <section aria-label="요약(여행 전체)" class="요약" id="요약">${요약칸들(셈, 시각주의)}</section>
     <div class="도구줄">
       <div class="탭들" role="group" aria-label="날짜">
@@ -913,13 +948,13 @@ async function 장소보내기() {
 }
 
 // ───────────────────────────── ⑥ 글·미리보기 (편마다: PC/모바일, 블록별 [고쳐줘], [이 글 승인])
-function AI표시판(상태) { // 네이버 'AI 활용 설정' = AI로 만든 이미지·영상·오디오가 대상. 글의 AI 도움은 글 끝 문구로
+function AI표시판(상태) { // 2026-10-08 실측: 네이버 'AI 활용 설정'은 글 단위가 아니라 사진·영상 블록마다 있음 → 이 표시는 확장이 사람에게 '직접 켜라'고 알리는 용. 글의 AI 도움은 글 끝 문구로
   const 켬 = 상태?.AI활용표시 === true;
   return `<section class="판" aria-labelledby="AI제목">
     <h2 id="AI제목">AI 사용 표시</h2>
-    <label class="체크"><input type="checkbox" data-할일="AI표시" ${켬 ? 'checked' : ''}> 네이버 ‘AI 활용 설정’ 켜기</label>
-    <p class="흐림작게" style="margin:0;line-height:1.6">AI로 만들거나 바꾼 <b>이미지·영상·오디오</b>가 있을 때 켜요. 직접 찍은 사진만 있으면 꺼 둬요(기본). 글을 AI 도움으로 쓴 것은 <b>글 끝 문구</b>로 알려요.</p>
-    ${상태?.AI이미지 && !켬 ? '<p class="멈춤상자" role="note" style="margin:0">이 글에 AI로 만든·바꾼 이미지가 있어요. 켜기를 권해요.</p>' : ''}
+    <label class="체크"><input type="checkbox" data-할일="AI표시" ${켬 ? 'checked' : ''}> AI로 만들거나 바꾼 사진·영상이 있음(임시저장 뒤 사진·영상마다 ‘AI 활용 설정’을 직접 켜기)</label>
+    <p class="흐림작게" style="margin:0;line-height:1.6">AI로 만들거나 바꾼 <b>이미지·영상·오디오</b>가 있을 때 켜요. 직접 찍은 사진만 있으면 꺼 둬요(기본). 켜 두면 블로그 도우미가 ‘AI로 만든 사진·영상마다 직접 켜 주세요’라고 알려요(자동으로 켜 주지는 않아요). 글을 AI 도움으로 쓴 것은 <b>글 끝 문구</b>로 알려요.</p>
+    ${상태?.AI이미지 && !켬 ? '<p class="멈춤상자" role="note" style="margin:0">이 글에 AI로 만든·바꾼 이미지가 있어요. ‘AI로 만들거나 바꾼 사진·영상이 있음’ 표시를 권해요.</p>' : ''}
     ${상태?.AI표기문구 ? '<p class="흐림작게" style="margin:0">✓ 글 끝 AI 사용 문구 있음</p>'
       : '<p class="멈춤상자" style="margin:0">글 끝에 AI 사용 문구가 없어요. [Claude에게 고쳐 달라기]로 넣어 달라고 하세요.</p>'}
   </section>`;
@@ -1104,7 +1139,7 @@ function 패키지판(발행, 상태, 편) {
   const 직접 = (패.건너뜀 || []).length;
   return `${실패판}<h3>1단계 · 발행 패키지 <span class="상태표 상태표-성공">준비됨</span></h3>
     <p class="본문글">사진 묶음 ${사진묶음}개 · 사진 ${패.사진수}장${영상자동 ? ` · 동영상 ${영상자동}개(도우미가 올려요)` : ''} · ${크기글(패.합계크기)}${직접 ? ` · 직접 올릴 것 ${직접}개(${영상.some((v) => !v.자동) ? '동영상 — 네이버 ‘동영상’ 버튼' : '사본 없음'})` : ''}
-      <br><span class="흐림작게">네이버 ‘AI 활용 설정’: ${패.AI활용표시 === true ? '켬' : '끔'}(글 화면에서 바꿔요)</span></p>
+      <br><span class="흐림작게">AI 사진·영상 표시: ${패.AI활용표시 === true ? '있음(임시저장 뒤 사진·영상마다 직접 켜기)' : '없음'}(글 화면에서 바꿔요)</span></p>
     ${패.패키지승인 === '승인됨' ? '<p class="흐림작게" style="margin:0">✓ 패키지 승인됨 — 올라갈 사진·지도·영상 파일까지 승인에 묶였어요(파일이 바뀌면 무효).</p>'
       : 패.패키지승인 === '필요' ? `<div class="멈춤상자">글은 승인했지만 <b>이 패키지(올라갈 파일)</b>는 아직 승인하지 않았어요(예약 발행에 필요 — 임시저장만 할 거면 안 해도 돼요).
         <div class="단추줄" style="margin-top:8px"><button type="button" class="단추 단추-작게" data-할일="패키지승인">패키지 승인</button></div></div>` : ''}
@@ -1352,6 +1387,7 @@ const 할일들 = {
   결정: 결정바꾸기,
   추천대로,
   새여행: 새여행창,
+  기간창,
   클로드연결,
   창닫기,
   다시: () => 화면그리기(),
@@ -1414,7 +1450,7 @@ const 할일들 = {
   },
   async AI표시(b) {
     const 켬 = b.checked;
-    try { await API('/api/AI활용표시', { 여행ID: 앱.여행ID, 편ID: 앱.데이터.편, 켬 }); 쪽지(`네이버 ‘AI 활용 설정’을 ${켬 ? '켜도록' : '끄도록'} 했어요.`); 화면그리기({ 유지: true }); }
+    try { await API('/api/AI활용표시', { 여행ID: 앱.여행ID, 편ID: 앱.데이터.편, 켬 }); 쪽지(켬 ? 'AI 사진·영상 있음으로 표시했어요 — 임시저장 뒤 사진·영상마다 ‘AI 활용 설정’을 직접 켜 주세요.' : 'AI 사진·영상 표시를 껐어요.'); 화면그리기({ 유지: true }); }
     catch (e) { b.checked = !켬; 오류쪽지(e); }
   },
   async 알림지우기(b) {

@@ -153,7 +153,7 @@ def 본문(실):
                 else:
                     if 그림.stat().st_mtime < 장소시각:
                         문제.append(f"블록 {k}: 지도 그림이 장소 정보보다 오래됐어요(숨김·이름을 바꾼 뒤 다시 안 그림) "
-                                  f"→ python 도구/지도.py --여행 {실.여행ID} --지도만")
+                                  f"→ python 도구/지도.py --여행 '{실.여행ID}' --지도만")
                     m = re.search(r"(\d+)일차", 그림.stem)
                     그날 = int(m.group(1)) if m else None
                     보이는곳 = {x.get("장소ID") for x in 목록.values()
