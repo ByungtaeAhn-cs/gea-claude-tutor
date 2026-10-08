@@ -122,6 +122,7 @@
       fileSelect: ['#video-uploader-wrap .nvu_file_list button.nvu_btn_select'],   // 누르면 오른쪽 정보 칸이 그 파일 것으로 바뀜
       processing: ["#video-uploader-wrap .nvu_file_list .nvu_file[class*='nvu_step_']", '#video-uploader-wrap .nvu_file_list .nvu_icon_loading'],
       error: ['#video-uploader-wrap .nvu_file_list .nvu_icon_notification'],                                            // '주의' 아이콘
+      itemText: ['.nvu_name', '.nvu_state'],   // 문제 표시가 뜬 파일 항목에서 보여 줄 글자(파일 이름·상태)
       infoForm: ['#video-uploader-wrap .nvu_meta_data', '#video-uploader-wrap .nvu_upload_form'],
       titleInput: ['#nvu_inp_box_title', "#video-uploader-wrap input[data-logcode='lmvup.subject']"],                    // 필수, 최대 40자
       titleMax: 40,

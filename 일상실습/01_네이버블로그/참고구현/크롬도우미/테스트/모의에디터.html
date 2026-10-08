@@ -6,10 +6,13 @@
 <title>모의 에디터 (SmartEditor ONE 흉내)</title>
 <!--
   블로그 도우미 시험용 모의 에디터 — 진짜 네이버가 아닙니다.
-  공개 자료의 이름·동작 단서(selectors.js 출처 [C1]~[C7])를 흉내 내어, 확장을 네이버에 접속하지 않고 시험합니다.
+  처음에는 공개 자료의 단서(selectors.js 출처 [C1]~[C7])로 만들었고, 2026-10-08 강사 실측(Edge, 실제 네이버 에디터)으로
+  확인한 구조에 맞췄습니다(동영상 업로더 nvu_, 사진·동영상별 'AI 활용 설정' 스위치, 카테고리 라디오, '작성 중인 글' 창,
+  React 같은 장소 검색칸, 숨은 입력 프레임의 Enter 로 새 문단). 그래도 진짜 네이버와 다를 수 있습니다.
   흉내 내는 것: 제목·본문(숨은 input_buffer 프레임으로 글을 받음), 글 유형(본문/소제목/인용구), 구분선, 사진(방법 a·b,
-  배치 선택, 사진 설명, 대표), 장소(검색·추가·확인), 발행 설정 레이어(카테고리·공개·태그·AI 활용·현재/예약·발행 확인),
-  저장(임시저장 개수·알림). 실제 네이버의 동작과 다를 수 있습니다(실측 필요).
+  배치 선택, 사진 설명, 대표, AI 스위치), 동영상(업로더·업로드·대표 이미지 추출·제목/정보·완료), 장소(검색·추가·확인),
+  발행 설정 레이어(카테고리·공개·태그·현재/예약·발행 확인), 저장(임시저장 개수·알림).
+  시험 방법·시나리오는 같은 폴더 README.md.
 
   주소 뒤 설정(?a=b&c=d)
     input=detached|attached|existing|dispatch|none|ignored   사진 버튼이 파일 칸을 다루는 방식(기본 detached)
@@ -18,10 +21,14 @@
     only=1                   여러 장을 받아도 첫 장만
     paste=on|trusted         숨은 입력칸이 paste 이벤트를 받는지(trusted = 진짜 붙여넣기만 → execCommand 로 넘어가는지 시험)
     barrier=protect|captcha|login   보호조치 문구 / 캡차 / 로그인 프레임
-    popup=draft              에디터 위에 '작성 중인 글' 창
+    popup=draft              처음에 '작성 중인 글이 있습니다.' 창([취소] 새 글 / [확인] restore ms 뒤 예전 글을 불러옴)
+    restore=800              [확인] 뒤 예전 글이 불러와지기까지(ms)
     help=1                   도움말 패널
-    ai=checkbox|button|none  'AI 활용' 설정 모양(기본 checkbox)
     prefill=1                제목이 이미 들어 있음
+    placeflaky=1             장소 검색 버튼의 첫 클릭을 무시(실측: 가끔 무시됨 → 확장의 재시도 시험)
+    vup=600 · venc=900       동영상 업로드 · 대표 이미지 추출 흉내 시간(ms)
+    vlate=300                동영상 창 틀이 뜬 뒤 업로더 내용이 그려지기까지(ms)
+    vfail=1                  첫 동영상 업로드 실패(주의 아이콘)
     shell=1                  바깥 화면 + iframe#mainFrame (주소에 Redirect=Write 가 있어도 같음)
     harness=1                확장 없이 넣기 함수·글 채우기를 시험하는 하네스
 -->
@@ -94,6 +101,34 @@
   #harness button { font-size: 12px; margin: 2px 2px 2px 0; }
   #harness pre { max-height: 140px; overflow: auto; background: #f6f8fa; padding: 6px; white-space: pre-wrap; font-size: 11px; }
   #harness a { margin-right: 6px; }
+  /* 2026-10-08 실측 구조 흉내 */
+  .se-popup-dim { position: absolute; inset: 0; }
+  .se-popup-container { position: relative; background: #fff; border-radius: 10px; padding: 18px 22px; min-width: 320px; max-width: 560px; }
+  .se-popup-title { display: block; margin-bottom: 6px; }
+  .se-popup-button-container { margin-top: 10px; text-align: right; }
+  .se-set-ai-mark-button { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: #555; }
+  .se-set-ai-mark-button-text { margin: 0; }
+  .se-set-ai-mark-button-toggle { width: 34px; height: 18px; border-radius: 9px; border: 1px solid #ccc; background: #eee; }
+  .se-set-ai-mark-button-toggle.se-is-selected { background: var(--green); }
+  #video-uploader-wrap { width: 520px; font-size: 13px; }
+  .nvu_header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .nvu_file_list { list-style: none; padding: 0; margin: 0 0 8px; }
+  .nvu_file_item { border: 1px solid var(--line); border-radius: 6px; margin: 4px 0; }
+  .nvu_btn_select { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; background: #fff; border: 0; padding: 6px; }
+  .nvu_btn_select[aria-selected="true"] { background: #eaf8ef; }
+  .nvu_thumb { position: relative; width: 60px; height: 36px; background: #ddd; }
+  /* 진짜 아이콘은 그림이 있어 크기가 있음 — 빈 상자면 확장이 '안 보임'으로 판단하므로 크기를 줌 */
+  .nvu_icon_center { position: absolute; left: 22px; top: 10px; width: 16px; height: 16px; border-radius: 50%; }
+  .nvu_icon_loading { background: #999; }
+  .nvu_icon_notification { background: #d1242f; }
+  .nvu_icon_center[hidden] { display: none; }
+  .nvu_progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #eee; }
+  .nvu_indicator { height: 3px; background: var(--green); width: 0; }
+  .nvu_inp_box { margin: 4px 0; }
+  .nvu_inp { width: 100%; }
+  .nvu_txt_error { color: #d1242f; }
+  .option_category__mock li { cursor: default; }
+  .option_category__mock label { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -111,13 +146,15 @@
     barrier: q.get('barrier') || '',
     popup: q.get('popup') || '',
     help: q.get('help') === '1',
-    ai: q.get('ai') || 'checkbox',
+    placeflaky: q.get('placeflaky') === '1',
+    restore: Number(q.get('restore') || 800),
     prefill: q.get('prefill') === '1',
     shell: q.get('shell') === '1' || q.has('Redirect'),
     harness: q.get('harness') === '1',
   };
   document.getElementById('mock-config').textContent = cfg.shell ? '바깥 화면(shell)' :
-    'input=' + cfg.input + ', drop=' + cfg.drop + ', paste=' + cfg.paste + ', ai=' + cfg.ai + (cfg.harness ? ', 하네스' : '');
+    'input=' + cfg.input + ', drop=' + cfg.drop + ', paste=' + cfg.paste + (cfg.popup ? ', popup=' + cfg.popup : '') +
+    (cfg.placeflaky ? ', placeflaky' : '') + (cfg.harness ? ', 하네스' : '');
 
   // ── 바깥 화면: iframe#mainFrame 안에 에디터 ───────────────────────────
   if (cfg.shell) {
@@ -263,7 +300,7 @@
   bdoc.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (caret && !isTitle(caret) && !caret.closest('.se-caption')) newParagraphAfter(caretComp(), '본문');
+    if (caret && !isTitle(caret) && !caret.closest('.se-caption')) newParagraphAfter(caretComp(), caretComp().getAttribute('data-format') || '본문');  // 같은 글 유형을 이어 감
   });
   bdoc.addEventListener('input', function (e) {
     if (e.inputType === 'insertText' && e.data) applyLines([e.data]);
@@ -329,6 +366,21 @@
     newParagraphAfter(hr, '본문');
   });
 
+  // 'AI 활용 설정' — 2026-10-08 실측: 발행 설정 창이 아니라 사진·콜라주·동영상 덩어리마다 스위치(켜짐 = .se-is-selected)
+  function aiMarkHtml() {
+    return '<div class="se-set-ai-mark-button-wrapper"><div class="se-set-ai-mark-button"><p class="se-set-ai-mark-button-text">AI 활용 설정</p>' +
+      '<button type="button" class="se-set-ai-mark-button-toggle" aria-label="AI 활용 설정"></button></div></div>';
+  }
+  function wireAiMark(comp) {
+    var t = comp.querySelector('.se-set-ai-mark-button-toggle');
+    t.addEventListener('click', function () {
+      var on = !t.classList.contains('se-is-selected');
+      t.classList.toggle('se-is-selected', on);
+      t.parentNode.classList.toggle('se-is-selected', on);
+      comp.setAttribute('data-ai', on ? '1' : '0');
+    });
+  }
+
   // 사진
   function addImages(files, kindClass) {
     var comp = document.createElement('div');
@@ -349,8 +401,10 @@
     comp.appendChild(imgs);
     comp.insertAdjacentHTML('beforeend',
       '<div class="img-tools"><button type="button" class="se-set-rep-image-button">대표</button></div>' +
+      aiMarkHtml() +
       '<div class="se-caption"><p class="se-text-paragraph"><span class="se-placeholder">사진 설명을 입력하세요.</span></p></div>' +
       '<div class="mock-tag">(' + kindClass + ') ' + files.map(function (f) { return f.name; }).join(', ') + '</div>');
+    wireAiMark(comp);
     comp.querySelector('.se-set-rep-image-button').addEventListener('click', function () {
       canvas.querySelectorAll('.rep-mark').forEach(function (n) { n.remove(); });
       comp.setAttribute('data-rep', '1');
@@ -421,11 +475,16 @@
     // 진짜 브라우저라면 여기서 파일 선택 창이 열림
     if (cfg.input === 'dispatch') input.dispatchEvent(new MouseEvent('click')); else input.click();
   });
-  // 동영상(모의) [실측 전 추정 흐름]: '동영상' → 업로드 창 → '동영상 추가'(파일 선택 창) → 업로드 n% → 인코딩 중
-  //   → (vinfo=0 이 아니면) 제목·설명 창 → '완료' → 본문에 동영상 모듈. vfail=1 이면 처리 실패 표시
-  //   vup·venc: 업로드·인코딩 흉내 시간(ms)
-  var vcfg = { up: Number(q.get('vup') || 600), enc: Number(q.get('venc') || 900), info: q.get('vinfo') !== '0', fail: q.get('vfail') === '1' };
-  mock.videos = []; mock.videoFiles = []; mock.videoInfo = [];
+  // 동영상 — 2026-10-08 실측 구조(네이버 동영상 업로더 nvu_)
+  //   '동영상' → div.se-popup.se-popup-video-upload > #video-uploader-wrap (창 틀이 먼저 뜨고 업로더 내용은 vlate ms 뒤)
+  //   → '동영상 추가'(button.nvu_btn_append.nvu_local → 파일 선택 창) → 같은 창이 '목록 + 정보 입력' 모양으로 바뀜
+  //   → 파일마다 div.nvu_file.nvu_step_upload / nvu_step_extract(처리 중, 로딩 아이콘) → 단계 클래스가 빠지고 em.nvu_state "업로드 완료"
+  //     (초록 진행 막대는 끝난 뒤에도 보임)
+  //   → 목록에서 파일을 골라(button.nvu_btn_select) 제목(#nvu_inp_box_title, 필수·40자)·정보(#nvu_inp_box_description)
+  //   → button.nvu_btn_submit "완료" → 본문에 파일마다 동영상 덩어리 하나(se-component.se-video)
+  //   파일을 고를 때마다 목록을 새로 그림(노드가 바뀜 — 확장이 매번 다시 찾는지 시험)
+  var vcfg = { up: Number(q.get('vup') || 600), enc: Number(q.get('venc') || 900), late: Number(q.get('vlate') || 300), fail: q.get('vfail') === '1' };
+  mock.videos = []; mock.videoFiles = []; mock.videoInfo = []; mock.videoSubmitRefused = 0;
   function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
   function videoComp(file, title, desc) {
     var comp = document.createElement('div');
@@ -435,87 +494,156 @@
     comp.setAttribute('data-size', String(file.size));
     comp.setAttribute('data-title', title || '');
     comp.setAttribute('data-desc', desc || '');
-    comp.innerHTML = '<div class="se-component-content"><div class="video-box">▶ ' + esc(title || file.name) + '</div>' +
+    comp.innerHTML = '<div class="se-component-content"><div class="se-video-info-wrap"><strong class="se-video-title-text">▶ ' + esc(title || file.name) + '</strong></div>' +
+      aiMarkHtml() +
       '<div class="mock-tag">(se-video) ' + esc(file.name) + ' · ' + file.size + 'B' + (desc ? ' · ' + esc(desc) : '') + '</div></div>';
+    wireAiMark(comp);
     return comp;
   }
-  function insertVideos(files, title, desc) {
+  function insertVideos(items) {
     var last = null;
-    files.forEach(function (f, i) {
-      var c = videoComp(f, i === 0 ? title : '', i === 0 ? desc : '');
+    items.forEach(function (it) {
+      var c = videoComp(it.file, it.title, it.desc);
       if (last) last.after(c); else insertAfterCaret(c);
       last = c;
     });
     newParagraphAfter(last, '본문');
   }
-  function showVideoInfo(files, pop) {
-    var form = document.createElement('div');
-    form.className = 'se-popup-video-info';
-    form.innerHTML = '<label>제목 <input type="text" class="se-video-title-input"></label>' +
-      '<label>설명 <textarea class="se-video-desc-input"></textarea></label>' +
-      '<button type="button" class="se-popup-button-cancel">취소</button> <button type="button" class="se-popup-button-confirm">완료</button>';
-    form.querySelector('.se-video-title-input').value = files[0].name.replace(/\.[^.]+$/, '');
-    pop.querySelector('.se-popup-inner').appendChild(form);
-    form.querySelector('.se-popup-button-cancel').addEventListener('click', function () { pop.remove(); });
-    form.querySelector('.se-popup-button-confirm').addEventListener('click', function () {
-      var title = form.querySelector('.se-video-title-input').value;
-      var desc = form.querySelector('.se-video-desc-input').value;
-      mock.videoInfo.push({ 제목: title, 설명: desc });
-      pop.remove();
-      insertVideos(files, title, desc);
-    });
-  }
-  function receiveVideos(fileList, pop, trusted) {
-    var files = Array.prototype.slice.call(fileList || []);
-    if (!files.length) return;
-    var st = pop.querySelector('.se-video-status');
-    if (files.length > 10) { st.textContent = '동영상은 한 번에 10개까지 올릴 수 있습니다.'; return; }
-    mock.videos.push({ trusted: !!trusted, names: files.map(function (f) { return f.name; }),
-      sizes: files.map(function (f) { return f.size; }), types: files.map(function (f) { return f.type; }) });
-    mock.videoFiles = mock.videoFiles.concat(files);
-    pop.querySelector('.se-video-add-button').disabled = true;
-    var bar = document.createElement('div');
-    bar.className = 'se-video-uploading';
-    bar.textContent = '업로드 중 0%';
-    st.appendChild(bar);
-    var t0 = Date.now();
-    var iv = setInterval(function () {
-      var e = Date.now() - t0;
-      if (e < vcfg.up) { bar.textContent = '업로드 중 ' + Math.round(e / vcfg.up * 100) + '%'; return; }
-      if (e < vcfg.up + vcfg.enc) { bar.textContent = '인코딩 중…'; return; }
-      clearInterval(iv);
-      bar.remove();
-      if (vcfg.fail) {
-        var er = document.createElement('div');
-        er.className = 'se-video-error';
-        er.textContent = '동영상 처리에 실패했습니다(모의).';
-        st.appendChild(er);
-        return;
-      }
-      if (vcfg.info) showVideoInfo(files, pop); else { pop.remove(); insertVideos(files, '', ''); }
-    }, 100);
-  }
   function openVideoPopup() {
     var pop = document.createElement('div');
-    pop.className = 'se-popup se-popup-video';
-    pop.setAttribute('role', 'dialog');
-    pop.setAttribute('aria-label', '동영상 업로드');
-    pop.innerHTML = '<div class="se-popup-inner"><strong>동영상 업로드 (모의)</strong><p>한 번에 최대 10개 · mp4 등</p>' +
-      '<button type="button" class="se-video-add-button">동영상 추가</button> <button type="button" class="se-popup-close-button">닫기</button>' +
-      '<div class="se-video-status"></div></div>';
-    pop.querySelector('.se-popup-close-button').addEventListener('click', function () { pop.remove(); });
-    pop.querySelector('.se-video-add-button').addEventListener('click', function () {
+    pop.className = 'se-popup __se-sentry se-popup-video-upload';
+    pop.setAttribute('data-group', 'popupLayer');
+    pop.innerHTML = '<div class="se-popup-dim se-popup-dim-transparent"></div>' +
+      '<div class="se-popup-container __se-pop-layer"><div id="video-uploader-wrap"></div></div>';
+    document.body.appendChild(pop);
+    var root = pop.querySelector('#video-uploader-wrap');
+    var st = { files: [], meta: [], sel: 0, timer: null };
+    function close() { clearInterval(st.timer); pop.remove(); }
+    function pick() {
       mock.pickerCalls++;
       var input = document.createElement('input');
       input.type = 'file'; input.multiple = true; input.style.display = 'none';
       input.accept = 'video/*,.mp4,.mov,.avi,.wmv,.mpg,.mpeg,.mkv,.asf,.skm,.k3g,.flv,.3gp,.webm';
-      input.addEventListener('change', function (e) { receiveVideos(input.files, pop, e.isTrusted); });
-      input.click(); // 진짜 브라우저라면 파일 선택 창
-    });
-    document.body.appendChild(pop);
+      input.addEventListener('change', function (e) { receiveVideos(input.files, e.isTrusted); });
+      input.click(); // 진짜 브라우저라면 파일 선택 창(확장은 page-hook 으로 가로챔)
+    }
+    function appendMode() {
+      root.innerHTML = '<div class="nvu_wrap nvu_mode_layer nvu_append"><div class="nvu_section_append">' +
+        '<div class="nvu_header"><strong class="nvu_heading">동영상 업로더 (모의)</strong>' +
+          '<button type="button" class="nvu_btn_close"><span class="blind">동영상업로더 닫기</span>닫기</button></div>' +
+        '<div class="nvu_form" role="tabpanel"><div class="nvu_area_button">' +
+          '<button type="button" class="nvu_btn_append nvu_local" data-logcode="lmvup.attmv"><span>동영상 추가</span></button> ' +
+          '<button type="button" class="nvu_btn_append nvu_cloud" data-logcode="lmvup.attsns"><span>네이버 MYBOX</span></button></div>' +
+          '<p class="nvu_normal">한 번에 최대 10개 · mp4 등</p></div></div></div>';
+      root.querySelector('.nvu_btn_close').addEventListener('click', close);
+      root.querySelector('.nvu_local').addEventListener('click', pick);
+    }
+    function receiveVideos(fileList, trusted) {
+      var files = Array.prototype.slice.call(fileList || []);
+      if (!files.length) return;
+      if (files.length > 10) { root.insertAdjacentHTML('beforeend', '<p class="nvu_txt_error">동영상은 한 번에 10개까지(모의)</p>'); return; }
+      mock.videos.push({ trusted: !!trusted, names: files.map(function (f) { return f.name; }),
+        sizes: files.map(function (f) { return f.size; }), types: files.map(function (f) { return f.type; }) });
+      mock.videoFiles = mock.videoFiles.concat(files);
+      st.files = files; st.sel = 0;
+      st.meta = files.map(function () { return { title: '', desc: '', step: 'upload', pct: 0 }; });
+      uploadMode();
+      var t0 = Date.now();
+      clearInterval(st.timer);
+      st.timer = setInterval(function () {
+        var e = Date.now() - t0;
+        st.meta.forEach(function (m, i) {
+          if (m.step === 'done' || m.step === 'fail') return;
+          if (vcfg.fail && i === 0 && e >= vcfg.up) { m.step = 'fail'; return; }
+          m.pct = Math.min(100, Math.round(e / Math.max(vcfg.up, 1) * 100));
+          m.step = e < vcfg.up ? 'upload' : e < vcfg.up + vcfg.enc ? 'extract' : 'done';
+        });
+        renderStates();
+        if (st.meta.every(function (m) { return m.step === 'done' || m.step === 'fail'; })) clearInterval(st.timer);
+      }, 100);
+    }
+    function uploadMode() {
+      root.innerHTML = '<div class="nvu_wrap nvu_mode_layer nvu_upload"><div class="nvu_section_upload">' +
+        '<div class="nvu_header"><div class="nvu_inner"><strong class="nvu_tit">동영상 업로드 (모의)</strong> ' +
+          '<button type="button" class="nvu_btn_append nvu_btn_local" data-logcode="lmvup.attmv">동영상 추가</button></div>' +
+          '<button type="button" class="nvu_btn_close"><span class="blind">동영상업로더 닫기</span>닫기</button></div>' +
+        '<div class="nvu_form nvu_is_expand"><div class="nvu_upload_select"><ul class="nvu_file_list" role="listbox"></ul></div>' +
+          '<div class="nvu_upload_form"><div class="nvu_area_data"><div class="nvu_meta_data">' +
+            '<div class="nvu_inp_box nvu_title_box"><label class="nvu_text" for="nvu_inp_box_title">제목<span class="nvu_point">*</span></label>' +
+              '<input type="text" id="nvu_inp_box_title" class="nvu_inp" data-logcode="lmvup.subject" maxlength="40" placeholder="제목을 입력하세요. (최대 40자, 필수)"></div>' +
+            '<div class="nvu_inp_box nvu_txtarea_box"><label class="nvu_text" for="nvu_inp_box_description">정보</label>' +
+              '<textarea id="nvu_inp_box_description" class="nvu_inp" data-logcode="lmvup.desc" maxlength="300" placeholder="정보를 입력해주세요. (최대 300자)"></textarea></div>' +
+            '<div class="nvu_inp_box nvu_ai_box"><span class="nvu_ai_tooltip_info_title">AI 활용</span> <button type="button" class="nvu_ai_toggle_button"><span class="nvu_ai_toggle_switch"></span></button></div>' +
+            '<p class="nvu_txt_error" hidden></p>' +
+          '</div></div></div></div>' +
+        '<div class="nvu_footer"><button type="button" class="nvu_btn_submit nvu_btn_type2"><span>완료</span></button></div></div></div>';
+      root.querySelector('.nvu_btn_close').addEventListener('click', close);
+      root.querySelector('.nvu_btn_local').addEventListener('click', pick);
+      root.querySelector('.nvu_btn_submit').addEventListener('click', submit);
+      renderList();
+      loadInputs();
+    }
+    function saveInputs() {
+      var m = st.meta[st.sel];
+      if (!m) return;
+      m.title = root.querySelector('#nvu_inp_box_title').value;
+      m.desc = root.querySelector('#nvu_inp_box_description').value;
+    }
+    function loadInputs() {
+      var m = st.meta[st.sel] || {};
+      root.querySelector('#nvu_inp_box_title').value = m.title || '';
+      root.querySelector('#nvu_inp_box_description').value = m.desc || '';
+    }
+    function renderList() {
+      var ul = root.querySelector('.nvu_file_list');
+      ul.textContent = '';
+      st.files.forEach(function (f, i) {
+        var li = document.createElement('li');
+        li.className = 'nvu_file_item';
+        li.setAttribute('role', 'presentation');
+        li.setAttribute('data-index', String(i));
+        li.innerHTML = '<div class="nvu_file"><button type="button" class="nvu_btn_select" role="option"><span class="nvu_order">' + (i + 1) + '</span>' +
+          '<div class="nvu_thumb"><div class="nvu_icon_loading nvu_icon_center"><span class="blind">로딩중</span></div>' +
+            '<div class="nvu_icon_notification nvu_icon_center" hidden><span class="blind">주의</span></div>' +
+            '<div class="nvu_progress" role="progressbar"><div class="nvu_indicator"></div></div></div>' +
+          '<div class="nvu_info"><span class="nvu_name"></span> <em class="nvu_state" role="status"></em></div></button>' +
+          '<button type="button" class="nvu_btn_delete"><span class="blind">삭제</span></button></div>';
+        li.querySelector('.nvu_name').textContent = f.name;
+        var b = li.querySelector('.nvu_btn_select');
+        b.setAttribute('aria-selected', i === st.sel ? 'true' : 'false');
+        b.addEventListener('click', function () { saveInputs(); st.sel = i; renderList(); loadInputs(); });
+        ul.appendChild(li);
+      });
+      renderStates();
+    }
+    function renderStates() {
+      root.querySelectorAll('.nvu_file_item').forEach(function (li) {
+        var m = st.meta[Number(li.getAttribute('data-index'))];
+        if (!m) return;
+        var busy = m.step === 'upload' || m.step === 'extract';
+        li.querySelector('.nvu_file').className = 'nvu_file' + (m.step === 'upload' ? ' nvu_step_upload' : m.step === 'extract' ? ' nvu_step_extract' : '');
+        li.querySelector('.nvu_icon_loading').hidden = !busy;
+        li.querySelector('.nvu_icon_notification').hidden = m.step !== 'fail';
+        li.querySelector('.nvu_indicator').style.width = (m.step === 'upload' ? m.pct : 100) + '%';
+        li.querySelector('.nvu_state').textContent = m.step === 'upload' ? '업로드 중 ' + m.pct + '%'
+          : m.step === 'extract' ? '대표 이미지 추출중' : m.step === 'fail' ? '업로드 실패(모의)' : '업로드 완료';
+      });
+    }
+    function submit() {
+      saveInputs();
+      var err = root.querySelector('.nvu_txt_error');
+      var refuse = function (msg) { mock.videoSubmitRefused++; err.hidden = false; err.textContent = msg; };
+      if (st.meta.some(function (m) { return m.step !== 'done'; })) return refuse('업로드가 끝난 뒤 완료할 수 있어요(모의)');
+      var empty = st.meta.findIndex(function (m) { return !String(m.title || '').trim(); });
+      if (empty >= 0) return refuse((empty + 1) + '번째 동영상의 제목을 입력하세요(모의)');
+      mock.videoInfo = mock.videoInfo.concat(st.meta.map(function (m) { return { 제목: m.title, 설명: m.desc }; }));
+      close();
+      insertVideos(st.files.map(function (f, i) { return { file: f, title: st.meta[i].title, desc: st.meta[i].desc }; }));
+    }
+    setTimeout(appendMode, vcfg.late);
   }
   wrap.querySelector('.se-video-toolbar-button').addEventListener('click', function () {
-    if (!document.querySelector('.se-popup-video')) openVideoPopup();
+    if (!document.querySelector('.se-popup-video-upload')) openVideoPopup();
   });
 
   if (cfg.drop !== 'off') {
@@ -543,14 +671,24 @@
     var pop = document.createElement('div');
     pop.className = 'se-popup se-popup-placesMap';
     pop.innerHTML = '<div class="se-popup-inner"><strong>장소 (모의)</strong><div>' +
-      '<input class="react-autosuggest__input" placeholder="장소명을 입력하세요"> <button type="button" class="se-place-search-button">검색</button></div>' +
+      '<input class="react-autosuggest__input" placeholder="장소명을 입력하세요."> <button type="button" class="se-place-search-button">검색</button></div>' +
+      '<div class="se-place-map-search-info"><p class="se-place-map-search-info-description se-place-map-search-info-description-before-search">장소를 검색해 보세요(모의)</p></div>' +
       '<ul class="results" style="padding:0"></ul><div class="picked mock-tag"></div>' +
       '<button type="button" class="se-popup-button-cancel">취소</button> <button type="button" class="se-popup-button-confirm" disabled>확인</button></div>';
     document.body.appendChild(pop);
     var input = pop.querySelector('input');
     var results = pop.querySelector('.results');
-    function search() {
-      var qv = input.value.trim();
+    // 2026-10-08 실측: 검색칸은 React(react-autosuggest) — 값만 바꾸면(setter + new Event('input')) 화면엔 글자가 보여도
+    // 검색어 상태가 안 바뀜. 브라우저가 만든 입력(InputEvent: 타자·execCommand)만 상태에 반영
+    var query = '';
+    input.addEventListener('input', function (e) { if (e.inputType) query = input.value; });
+    var flaky = cfg.placeflaky;  // 실측: 검색 버튼 클릭이 가끔 무시됨(사람이 Enter 치면 결과 나옴)
+    mock.placeClicksIgnored = mock.placeClicksIgnored || 0;
+    function search(viaClick) {
+      if (viaClick && flaky) { flaky = false; mock.placeClicksIgnored++; return; }
+      var qv = query.trim();
+      var info = pop.querySelector('.se-place-map-search-info-description');
+      if (info) info.classList.remove('se-place-map-search-info-description-before-search');
       results.textContent = '';
       PLACES.filter(function (p) { return qv && p[0].indexOf(qv) >= 0; }).forEach(function (p) {
         var li = document.createElement('li');
@@ -568,8 +706,8 @@
         results.appendChild(li);
       });
     }
-    pop.querySelector('.se-place-search-button').addEventListener('click', search);
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
+    pop.querySelector('.se-place-search-button').addEventListener('click', function () { search(true); });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(false); });
     pop.querySelector('.se-popup-button-cancel').addEventListener('click', function () { pop.remove(); });
     pop.querySelector('.se-popup-button-confirm').addEventListener('click', function () {
       var comp = document.createElement('div');
@@ -587,23 +725,22 @@
   var layer = document.createElement('div');
   layer.className = 'layer_publish__mock';
   layer.hidden = true;
-  var aiHtml = cfg.ai === 'none' ? '' : cfg.ai === 'button'
-    ? '<button type="button" class="ai_switch__mock" role="switch" aria-checked="false">AI 활용 설정</button>'
-    : '<label><input type="checkbox" id="ai_use_check"> AI 활용 설정</label>';
   layer.innerHTML =
     '<strong class="set_title__mock">발행 설정 (모의)</strong> <button type="button" class="btn_close__mock">닫기</button>' +
     '<div class="row">카테고리 <button type="button" class="selectbox_button__mock" data-click-area="tpb*i.category" aria-label="카테고리 목록 버튼">게시판</button>' +
-      '<div class="option_category__mock" hidden><ul>' +
-        ['게시판', '여행', '<span class="blind">하위 카테고리</span>제주', '창조 칼럼', '일상'].map(function (n) {
-          return '<li class="item__mock">' + n + '</li>';
-        }).join('') + '</ul></div></div>' +
+      // 2026-10-08 실측: li.item__ > span.option__ > input[type=radio] + label[role=button] > span.text__ — 줄(li)을 누르면 안 바뀜
+      '<div class="option_category__mock" hidden><div class="option_list_layer__mock" role="menu"><ul class="list__mock">' +
+        ['게시판', '여행', '<span class="blind">하위 카테고리</span>제주', '창조 칼럼', '일상'].map(function (n, i) {
+          return '<li class="item__mock"><span class="option__mock">' +
+            '<input type="radio" class="radio_item__mock" name="category_mock" id="cat_mock_' + i + '" role="none" tabindex="-1">' +
+            '<label class="radio_label__mock" for="cat_mock_' + i + '" role="button" tabindex="0"><span class="text__mock">' + n + '</span></label></span></li>';
+        }).join('') + '</ul></div></div></div>' +
     '<div class="row">공개 ' +
       '<input type="radio" name="open" id="open_public" checked><label for="open_public">전체공개</label> ' +
       '<input type="radio" name="open" id="open_neighbor"><label for="open_neighbor">이웃공개</label> ' +
       '<input type="radio" name="open" id="open_both_neighbor"><label for="open_both_neighbor">서로이웃공개</label> ' +
       '<input type="radio" name="open" id="open_private"><label for="open_private">비공개</label></div>' +
     '<div class="row">태그 <div class="tag__mock"></div><input id="tag-input" placeholder="태그 입력 (최대 30개)"></div>' +
-    '<div class="row">' + aiHtml + '</div>' +
     '<div class="row">발행 시간 <input type="radio" name="time" id="radio_time1" checked><label for="radio_time1">현재</label> ' +
       '<input type="radio" name="time" id="radio_time2"><label for="radio_time2">예약</label>' +
       '<div class="reserve_box__mock" hidden><input class="input_date__mock" value="2026. 10. 07."> ' +
@@ -614,10 +751,11 @@
   var catBtn = layer.querySelector('.selectbox_button__mock');
   var catList = layer.querySelector('.option_category__mock');
   catBtn.addEventListener('click', function () { catList.hidden = !catList.hidden; });
-  catList.addEventListener('click', function (e) {
-    var li = e.target.closest('li');
-    if (!li) return;
-    catBtn.textContent = li.textContent.replace('하위 카테고리', '');
+  catList.addEventListener('change', function (e) {
+    var r = e.target.closest('input[type="radio"]');
+    if (!r || !r.checked) return;
+    var lab = catList.querySelector('label[for="' + r.id + '"]');
+    catBtn.textContent = (lab ? lab.textContent : '').replace('하위 카테고리', '');
     catList.hidden = true;
   });
   var tagInput = layer.querySelector('#tag-input');
@@ -630,10 +768,6 @@
     chip.textContent = '#' + v;
     layer.querySelector('.tag__mock').appendChild(chip);
     tagInput.value = '';
-  });
-  var aiSwitch = layer.querySelector('.ai_switch__mock');
-  if (aiSwitch) aiSwitch.addEventListener('click', function () {
-    aiSwitch.setAttribute('aria-checked', aiSwitch.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
   });
   layer.querySelectorAll('input[name="time"]').forEach(function (r) {
     r.addEventListener('change', function () { layer.querySelector('.reserve_box__mock').hidden = !layer.querySelector('#radio_time2').checked; });
@@ -664,11 +798,24 @@
     document.body.appendChild(hp);
   }
   if (cfg.popup === 'draft') {
+    // 2026-10-08 실측: 새로고침·로그인 뒤 뜨는 창. [취소] = 새 글, [확인] = 예전 글을 이어 씀(조금 뒤 불러와짐)
     var dp = document.createElement('div');
-    dp.className = 'se-popup se-popup-alert';
-    dp.innerHTML = '<div class="se-popup-inner">작성 중인 글이 있습니다. 이어서 작성하시겠습니까? (모의) ' +
-      '<button type="button" class="se-popup-button-cancel">취소</button> <button type="button" class="se-popup-button-confirm">확인</button></div>';
-    dp.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { dp.remove(); }); });
+    dp.className = 'se-popup __se-sentry se-popup-alert se-popup-alert-confirm';
+    dp.setAttribute('data-group', 'popupLayer');
+    dp.innerHTML = '<div class="se-popup-dim se-popup-dim-white"></div><div class="se-popup-container __se-pop-layer">' +
+      '<div class="se-popup-header"><strong class="se-popup-title">작성 중인 글이 있습니다.</strong></div>' +
+      '<div class="se-popup-content"><div class="se-popup-alert-text">이어서 작성하시겠습니까? (모의)</div></div>' +
+      '<div class="se-popup-button-container"><button type="button" class="se-popup-button se-popup-button-cancel"><span class="se-popup-button-text">취소</span></button> ' +
+      '<button type="button" class="se-popup-button se-popup-button-confirm"><span class="se-popup-button-text">확인</span></button></div></div>';
+    dp.querySelector('.se-popup-button-cancel').addEventListener('click', function () { mock.draftChoice = '취소'; dp.remove(); });
+    dp.querySelector('.se-popup-button-confirm').addEventListener('click', function () {
+      mock.draftChoice = '확인';
+      dp.remove();
+      setTimeout(function () {
+        appendText(titleP, '예전에 쓰던 글');
+        appendText(firstBody.querySelector('.se-text-paragraph'), '예전에 쓰던 본문(모의)');
+      }, cfg.restore);
+    });
     document.body.appendChild(dp);
   }
   if (cfg.barrier === 'login') {
@@ -691,19 +838,19 @@
         if (c.classList.contains('se-placesMap')) return { 종류: '장소', 장소: JSON.parse(c.getAttribute('data-places')) };
         if (c.classList.contains('se-video')) {
           return { 종류: '동영상', 이름: c.getAttribute('data-name'), 크기: Number(c.getAttribute('data-size')),
-            제목: c.getAttribute('data-title') || '', 설명: c.getAttribute('data-desc') || '' };
+            제목: c.getAttribute('data-title') || '', 설명: c.getAttribute('data-desc') || '', AI: c.getAttribute('data-ai') === '1' };
         }
         if (c.querySelector('img')) {
           return { 종류: c.classList.contains('se-imageStrip') ? '콜라주' : c.classList.contains('se-imageGroup') ? '슬라이드' : '사진',
             사진: Array.prototype.map.call(c.querySelectorAll('img'), function (i) { return i.alt; }),
-            설명: text(c.querySelector('.se-caption')), 대표: c.getAttribute('data-rep') === '1' };
+            설명: text(c.querySelector('.se-caption')), 대표: c.getAttribute('data-rep') === '1', AI: c.getAttribute('data-ai') === '1' };
         }
         return { 종류: c.getAttribute('data-format') || '본문', 글: text(c) };
       }),
       카테고리: catBtn.textContent,
       공개: (layer.querySelector('input[name="open"]:checked') || {}).id || null,
       태그: Array.prototype.map.call(layer.querySelectorAll('.tag_item__mock'), function (c) { return c.textContent.replace(/^#/, ''); }),
-      AI활용: aiSwitch ? aiSwitch.getAttribute('aria-checked') === 'true' : !!(layer.querySelector('#ai_use_check') || {}).checked,
+      AI켠수: canvas.querySelectorAll('.se-component[data-ai="1"]').length,  // 사진·동영상별 'AI 활용 설정'을 켠 덩어리 수
       레이어열림: !layer.hidden,
       저장수: Number(saveCountBtn.textContent),
     };
@@ -718,6 +865,8 @@
     '<h2>테스트 하네스 (확장 없이)</h2>' +
     '<div>모드: <a href="?harness=1&input=detached">분리 input</a><a href="?harness=1&input=attached">붙는 input</a>' +
       '<a href="?harness=1&input=none&drop=on">input 없음(→b)</a><a href="?harness=1&paste=trusted">paste 막힘</a></div>' +
+    '<div>실측 시나리오: <a href="?harness=1&popup=draft">작성 중인 글 창</a><a href="?harness=1&placeflaky=1">장소 첫 클릭 무시</a>' +
+      '<a href="?harness=1&vfail=1">동영상 실패</a><a href="?harness=1&help=1">도움말 패널</a></div>' +
     '<label>시험 사진 <select id="h-count"><option>1</option><option selected>3</option><option>11</option></select>장</label>' +
     '<div><button type="button" data-m="auto">자동 (a→b)</button><button type="button" data-m="a">(a)만</button>' +
     '<button type="button" data-m="b">(b)만</button><button type="button" id="h-panel">글 채우기(가짜 작업)</button></div>' +
@@ -728,7 +877,7 @@
   function loadScripts(list, done) {
     if (!list.length) return done();
     var s = document.createElement('script');
-    s.src = list[0];
+    s.src = list[0] + '?t=' + Date.now();   // 고친 확장 파일을 캐시 없이 늘 새로 불러옴
     s.onload = function () { loadScripts(list.slice(1), done); };
     s.onerror = function () { out.textContent = '불러오기 실패: ' + list[0]; };
     document.head.appendChild(s);
@@ -782,12 +931,15 @@
       { '종류': '인용구', '글': '바다는 넓다', '출처': '옛말', '번호': 5, '묶음': null },
       { '종류': '구분선', '번호': 6, '묶음': null },
       { '종류': '장소', '장소': ['협재해변', '오설록 티뮤지엄'], '번호': 7, '묶음': null },
-      { '종류': '영상', '영상': 'v1', '번호': 8, '묶음': null },
+      { '종류': '영상', '영상': ['v1', 'v2'], '제목': '하네스 영상', '설명': '모의 업로드', '번호': 8, '묶음': 3 },
       { '종류': '참고자료', '목록': ['자료 하나', '개인정보 보호조치 안내'], '번호': 9, '묶음': null },
     ], '태그': ['제주여행', '바다'], '카테고리': '여행', '공개': '비공개', 'AI활용표시': true, '승인': '미승인' },
     '묶음': [
       { '번호': 1, '블록': 3, '방식': '한 장', '파일': [file(1, 'h_01.jpg')] },
       { '번호': 2, '블록': 4, '방식': '콜라주', '파일': [file(1, 'h_02.jpg'), file(2, 'h_03.jpg'), file(3, 'h_04.jpg')] },
+      { '번호': 3, '블록': 8, '종류': '영상', '방식': '동영상', '파일': [
+        { '순서': 1, 'id': 'v1', '이름': 'v1.mp4', '크기': 4096, '형식': 'video/mp4', '주소': '/fake/v1.mp4', '업로드묶음': 1 },
+        { '순서': 2, 'id': 'v2', '이름': 'v2.mp4', '크기': 8192, '형식': 'video/mp4', '주소': '/fake/v2.mp4', '업로드묶음': 1 }] },
     ],
     '단계목록': ['준비', '제목', '블록 1', '블록 2', '블록 3', '블록 4', '블록 5', '블록 6', '블록 7', '블록 8', '블록 9', '태그', '카테고리', '공개설정', 'AI활용', '저장'],
     '예약': { '허용': false }, '설정': { '최소간격초': 0 },
@@ -849,7 +1001,16 @@
     },
   };
 
-  window.__harness = { makeSampleFiles: makeSampleFiles, run: run, fakeTransport: fakeTransport, reports: reports, claims: claims, fakeJob: fakeJob, wrongNext: false, hangFiles: 0, refuseMark: false, diags: [] };
+  // 요약: 단계마다 마지막 보고(상태·메시지·코드)와 끝 상태 — 시험 절차는 README.md
+  function summary() {
+    var last = {};
+    reports.forEach(function (r) { if (r['코드'] !== '처리중') last[r['단계']] = { 상태: r['상태'], 메시지: r['메시지'] || '', 코드: r['코드'] || null, 주의: r['주의'] || [] }; });
+    var fin = reports.filter(function (r) { return r['최종']; }).map(function (r) { return r['최종']; }).pop() || null;
+    var failed = Object.keys(last).filter(function (k) { return last[k]['상태'] === '실패'; });
+    return { 끝: fin, 실패: failed, 단계: last, 모의: mock.state(), 동영상정보: mock.videoInfo, 완료거절: mock.videoSubmitRefused,
+      장소클릭무시: mock.placeClicksIgnored || 0, 창선택: mock.draftChoice || null };
+  }
+  window.__harness = { makeSampleFiles: makeSampleFiles, run: run, fakeTransport: fakeTransport, reports: reports, claims: claims, fakeJob: fakeJob, wrongNext: false, hangFiles: 0, refuseMark: false, diags: [], summary: summary };
   box.addEventListener('click', function (e) {
     var b = e.target.closest('button');
     if (!b) return;

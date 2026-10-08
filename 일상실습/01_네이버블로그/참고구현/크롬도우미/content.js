@@ -658,7 +658,7 @@
       ensureSelection(t);
       var lines = String(text).split('\n');
       lines.forEach(function (line, i) {
-        if (i > 0) t.doc.execCommand('insertParagraph', false);
+        if (i > 0) pressKey(t.el, 'Enter');   // 2026-10-08 실측: insertParagraph 는 에디터가 무시 — 줄 나누기도 Enter 키로
         if (line) t.doc.execCommand('insertText', false, line);
       });
       return t.how;
@@ -1057,7 +1057,10 @@
         var bad = visibleFirst(doc, S.video.error);
         if (bad) {
           var badItem = bad.el.closest('li') || bad.el;
-          throw new StepError('확인필요', '네이버가 동영상 처리 중 문제를 표시함: “' + norm(badItem.textContent).slice(0, 60) + '” — 화면을 확인하세요');
+          // 파일 이름·상태 글자만(숨김 글자 '로딩중'·'주의'·'삭제'는 빼고)
+          var badText = (S.video.itemText || []).map(function (q) { return badItem.querySelector(q); }).filter(Boolean)
+            .map(function (n) { return norm(n.textContent); }).join(' ') || norm(badItem.textContent);
+          throw new StepError('확인필요', '네이버가 동영상 처리 중 문제를 표시함: “' + badText.slice(0, 60) + '” — 화면을 확인하세요');
         }
         var busy = visibleFirst(doc, S.video.processing);
         // 업로더 목록에 이번 파일이 다 올라온 뒤에만 '끝남'으로 봄(넣은 직후 목록이 그려지기 전과 구별)
