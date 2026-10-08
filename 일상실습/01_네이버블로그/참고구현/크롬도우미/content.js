@@ -22,7 +22,7 @@
   if (globalThis.__blogHelperContentLoaded) return; // 같은 프레임에 두 번 들어오는 것 방지
   globalThis.__blogHelperContentLoaded = true;
 
-  var VERSION = '0.5.1';
+  var VERSION = '0.5.4';
   var S = globalThis.BLOG_HELPER_SELECTORS;
   if (!S) {
     console.warn('[블로그 도우미] selectors.js 가 먼저 로드되지 않았습니다.');
@@ -550,10 +550,11 @@
     assertLive();
     var doc = el.ownerDocument;
     var view = doc.defaultView;
-    try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) { /* 무시 */ }
+    var pt = where && typeof where === 'object' ? where : null;   // 정한 지점(clickHit) — 다시 스크롤하지 않음
+    if (!pt) { try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) { /* 무시 */ } }
     var r = el.getBoundingClientRect();
-    var x = where === 'end' ? r.right - 2 : r.left + r.width / 2;
-    var y = where === 'end' ? r.bottom - Math.min(4, r.height / 2) : r.top + r.height / 2;
+    var x = pt ? pt.x : where === 'end' ? r.right - 2 : r.left + r.width / 2;
+    var y = pt ? pt.y : where === 'end' ? r.bottom - Math.min(4, r.height / 2) : r.top + r.height / 2;
     (S.clickEvents || ['click']).forEach(function (type) {
       var Ctor = type.indexOf('pointer') === 0 && typeof view.PointerEvent === 'function' ? view.PointerEvent : view.MouseEvent;
       el.dispatchEvent(new Ctor(type, {
@@ -561,6 +562,37 @@
         clientX: x, clientY: y, button: 0, buttons: /down$/.test(type) ? 1 : 0,
       }));
     });
+  }
+
+  /** 2026-10-09 실측: 사람의 클릭은 그 자리 맨 위 요소(설명 칸의 안내 글자, 사진 img 등)에 떨어짐 →
+   *  el 안의 여러 지점(가운데부터) 중 맨 위 요소가 el 안인 첫 지점에, 그 요소로 보냄. 한 장 사진은 사진을 고르면 뜨는
+   *  도구 막대가 설명 칸 가운데를 가린 것으로 보임(콜라주는 됨). 모두 가려졌으면 el 에 직접 보내고 가린 요소를 알려 줌 */
+  function clickHit(el) {
+    assertLive();
+    try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) { /* 무시 */ }
+    var r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return { 눌림: false, 가림: '' };
+    var doc = el.ownerDocument;
+    var cover = null;
+    var ys = [0.5, 0.3, 0.7], xs = [0.5, 0.3, 0.7, 0.15, 0.85, 0.05, 0.95];
+    for (var i = 0; i < ys.length; i++) {
+      for (var j = 0; j < xs.length; j++) {
+        var pt = { x: r.left + r.width * xs[j], y: r.top + r.height * ys[i] };
+        var hit = doc.elementFromPoint(pt.x, pt.y);
+        if (hit && (hit === el || el.contains(hit)) && !isOurs(hit)) {
+          clickEl(hit, pt);
+          return { 눌림: true, 가림: cover && (i || j) ? nodeName(cover) : '' };
+        }
+        if (!cover && hit) cover = hit;
+      }
+    }
+    clickEl(el);
+    return { 눌림: true, 가림: cover ? nodeName(cover) + '(모든 지점)' : '' };
+  }
+
+  function nodeName(n) {
+    var cls = String(n.className && n.className.baseVal != null ? n.className.baseVal : n.className || '').trim().split(/\s+/).slice(0, 2).join('.');
+    return n.tagName.toLowerCase() + (cls ? '.' + cls : '');
   }
 
   function pressKey(el, key) {
@@ -848,18 +880,37 @@
     // 2026-10-09 실측: 사진 6개 모두 설명 '주의'인데 원인은 패널에만 남음 → 주의 문장에 못 넣은 이유를 함께(서버 작업 기록에 남게)
     if (block['설명'] && !comp) notes.push('사진 설명을 넣지 못함(방금 넣은 사진을 화면에서 찾지 못함) — 사람이 넣기: “' + block['설명'] + '”');
     if (block['설명'] && comp) {
-      clickEl(comp);
-      await sleep(200);
-      var cap = await waitFor(function () { return visibleFirst(comp, S.imageCaption); }, 2000);
       var capOk = false;
       var capWhy = '설명 칸을 찾지 못함';
-      // 2026-10-08 실측: 설명이 안 들어감(원인 미확정). 에디터가 문단을 다시 그리면 처음 잡은 요소는 떨어져 나가므로
-      // 확인할 때마다 설명 칸을 다시 찾고, 방법별 결과·다른 곳에 들어갔는지를 기록(다음 실측 때 진단과 함께 봄)
+      // 2026-10-08 실측: 설명이 안 들어감. 에디터가 문단을 다시 그리면 처음 잡은 요소는 떨어져 나가므로 확인할 때마다 설명 칸을 다시 찾음
       var want = norm(block['설명']).slice(0, 20);
       var capText = function () { var c = first(comp, S.imageCaption); return c ? textOf(c.el) : ''; };
-      if (cap) {
-        clickEl(cap.el);
+      // 2026-10-09 실측(진단 비교): 칸 요소에 직접 보낸 클릭은 에디터 커서를 못 옮겨 글이 사진 아래 본문으로 감 →
+      // 사진을 고르고(맨 위 요소에 클릭) 설명 칸을 눌러, 칸이 '커서 들어감'(se-is-focused)이 된 것을 본 뒤에만 글을 넣음
+      var capFocused = function () { return !!first(comp, S.imageCaptionFocused || []); };
+      var cap = null;
+      var clickTried = [];
+      var ways = S.captionClickTries || ['direct'];
+      for (var w = 0; w < ways.length && !capFocused(); w++) {
+        if (w) await sleep((S.timing.captionRetryMs || 1000) * w);
+        var press = ways[w] === 'hit' ? clickHit : function (el) { clickEl(el); return { 눌림: true, 가림: '' }; };
+        var pic = first(comp, S.imageClickTarget || []);
+        press(pic ? pic.el : comp);
         await sleep(200);
+        cap = await waitFor(function () { return visibleFirst(comp, S.imageCaption); }, 2000);
+        if (!cap) { clickTried.push(ways[w] + ': 설명 칸 안 보임'); continue; }
+        var pressed = press(cap.el);
+        var moved = await waitFor(capFocused, 1500);
+        clickTried.push(ways[w] + ': ' + (moved ? '커서 들어감' : '커서 안 들어감') + (pressed.가림 ? '(가림: ' + pressed.가림 + ')' : ''));
+      }
+      ctx.log('사진 설명 칸 누르기 — ' + clickTried.join(', '));
+      if (cap && !capFocused()) {
+        capWhy = '설명 칸에 커서를 옮기지 못해 넣지 않음 · ' + clickTried.join(', ');
+        cap = null;  // 커서가 본문에 있을 때 치면 글이 사진 아래 본문으로 들어감 — 치지 않음
+      } else if (!cap && clickTried.length) {
+        capWhy = '사진을 눌러도 설명 칸이 보이지 않음 · ' + clickTried.join(', ');
+      }
+      if (cap) {
         var tried = [];
         var where = [];
         for (var i = 0; i < S.textMethods.title.length && !capOk; i++) {
@@ -875,8 +926,6 @@
         capWhy = !tried.length ? '설명 칸은 찾음 · 넣는 방법 없음' :
           '설명 칸은 찾음 · ' + tried.join('·') + (tried.length > 1 ? ' 모두' : '') + ' 반응 없음' +
           (where.length ? ' · 넣은 곳: ' + where.join('/') : '');
-      } else {
-        ctx.log('사진을 눌렀지만 설명 칸이 보이지 않음 (selectors.imageCaption)');
       }
       if (!capOk) notes.push('사진 설명을 넣지 못함(' + capWhy + ') — 사람이 넣기: “' + block['설명'] + '”');
     }
@@ -1937,7 +1986,8 @@
   }
 
   var DIAG_NOT_SELECTORS = { writeUrl: 1, textMethods: 1, newParagraphMethods: 1, clickEvents: 1, photoButtonEvents: 1,
-    barrierText: 1, doneText: 1, timing: 1, layoutText: 1, searchTries: 1, categoryItemControl: 1, restorePopupText: 1 };
+    barrierText: 1, doneText: 1, timing: 1, layoutText: 1, searchTries: 1, categoryItemControl: 1, restorePopupText: 1,
+    captionClickTries: 1 };
   function diagSelectors(editorDoc, topDoc) {
     var out = {};
     var count = function (doc, sel) {

@@ -102,6 +102,13 @@
     layoutConfirm: ['button.se-popup-button-confirm', 'button.se-image-dialog-btn-submit', 'button.se-dialog-btn-submit'],  // [C4]
     // 사진 설명: 사진을 클릭해야 보이고, 설명 칸을 한 번 더 클릭해야 입력됨 [C6]
     imageCaption: ['.se-caption .se-text-paragraph', '.se-caption', "[class*='se-caption']"],
+    // 2026-10-09 실측(진단 비교): 사람이 누르면 사진 칸 .se-section-image.se-is-selected.se-is-activated,
+    // 설명 칸 div.se-caption.se-is-on.se-is-focused. 확장이 칸 요소에 직접 보낸 클릭은 커서를 못 옮겨 글이 사진 아래 본문으로 감
+    imageCaptionFocused: ['.se-caption.se-is-focused'],
+    imageClickTarget: ['img.se-image-resource', '.se-module-image'],
+    // direct = 칸 요소에 직접, hit = 그 자리 맨 위 요소에. 2026-10-09 실측(0.5.2~0.5.4, 4번): 콜라주는 direct 첫 시도에 커서가 들어감,
+    // 한 장 사진은 사람이 누르면 되지만 확장의 클릭은 direct·hit 5번·10초 모두 안 들어감(원인 미확정) → 2번만 하고 '주의'로 사람에게
+    captionClickTries: ['direct', 'hit'],
     imageRepresentative: ['button.se-set-rep-image-button', "button[data-name='representative']", "button[aria-label*='대표']"], // [미실측]
     uploadProgress: [],                                                                     // [미실측]
 
@@ -203,6 +210,7 @@
     // ── 10. 클릭·시간 ─────────────────────────────────────────────────────
     clickEvents: ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'],
     timing: {
+      captionRetryMs: 500,    // 사진 설명 칸 누르기 재시도 사이(순번만큼 곱함)
       editorWaitMs: 30000,    // 에디터가 그려질 때까지
       inputWaitMs: 3000,      // 사진 버튼을 누른 뒤 file input 이 생길 때까지
       effectWaitMs: 8000,     // (b) 끌어다 놓기 뒤 사진이 나타날 때까지

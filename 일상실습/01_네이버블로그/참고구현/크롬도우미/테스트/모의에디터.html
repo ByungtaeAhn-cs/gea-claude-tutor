@@ -31,7 +31,7 @@
                              same = '성산일출봉'·'오설록 티뮤지엄'(이름이 정확히 같은 '성산일출봉'이 2곳)
     cat=missing              카테고리 목록에 '여행'이 없음(낙서장·포토로그·스크랩·일상 — 2026-10-09 실측 블로그 모양)
     mode=reserve             가짜 작업의 모드를 '예약발행'으로(예약 조건은 안 맞으므로 단계는 저장까지)
-    caption=dead|none        사진 설명 칸이 글을 받지 않음 / 설명 칸이 없음(설명을 못 넣었을 때의 보고 시험)
+    caption=dead|none|real   사진 설명 칸이 글을 받지 않음 / 설명 칸이 없음 / 실측처럼 맨 위 요소에 떨어진 클릭만 받음(2026-10-09)
     vup=600 · venc=900       동영상 업로드 · 대표 이미지 추출 흉내 시간(ms)
     vlate=300                동영상 창 틀이 뜬 뒤 업로더 내용이 그려지기까지(ms)
     vfail=1                  첫 동영상 업로드 실패(주의 아이콘)
@@ -196,7 +196,7 @@
   // ── 에디터 화면 ───────────────────────────────────────────────────────
   var mock = window.__mock = {
     received: [], ignored: 0, publishClicks: 0, saveClicks: 0, pickerCalls: 0, popupChoices: [],
-    published: [], saves: [], formatClicks: [], untrustedPasteRejected: 0,
+    published: [], saves: [], formatClicks: [], untrustedPasteRejected: 0, captionClickIgnored: 0,
   };
   var wrap = document.createElement('div');
   wrap.className = 'se-wrap';
@@ -252,11 +252,28 @@
   canvas.appendChild(firstBody);
 
   // 커서(모의): 지금 글이 들어갈 문단
+  // caption=real: 한 장 사진을 고르면 뜨는 도구 막대가 설명 칸 가운데를 가림(2026-10-09 실측: 한 장 사진만 커서가 안 들어감)
+  function imgToolbar(comp, on) {
+    var old = comp.querySelector('.mock-img-toolbar');
+    if (old) old.remove();
+    var cap = comp.querySelector('.se-caption');
+    if (!on || cfg.caption !== 'real' || !comp.classList.contains('se-image') || !cap) return;
+    var tb = document.createElement('div');
+    tb.className = 'mock-img-toolbar';
+    tb.textContent = '사진 도구(모의)';
+    tb.setAttribute('style', 'position:absolute;left:25%;width:50%;background:#333;color:#fff;font-size:12px;text-align:center;z-index:5;' +
+      'top:' + cap.offsetTop + 'px;height:' + Math.max(cap.offsetHeight, 20) + 'px');
+    comp.appendChild(tb);
+  }
   var caret = null;
   function setCaret(p) {
     if (caret) caret.classList.remove('caret');
     caret = p;
     if (caret) caret.classList.add('caret');
+    // 2026-10-09 실측: 커서가 든 설명 칸은 div.se-caption.se-is-on.se-is-focused
+    canvas.querySelectorAll('.se-caption.se-is-focused').forEach(function (n) { n.classList.remove('se-is-focused'); });
+    var capBox = caret && caret.closest('.se-caption');
+    if (capBox) capBox.classList.add('se-is-focused');
   }
   function caretComp() { return caret && caret.closest('.se-component'); }
   function isTitle(p) { return p === titleP; }
@@ -325,12 +342,21 @@
   canvas.addEventListener('mousedown', function (e) {
     var p = e.target.closest('.se-text-paragraph');
     var img = e.target.closest('.se-image, .se-imageStrip, .se-imageGroup');
+    // caption=real (2026-10-09 실측 흉내): 사진·설명 칸은 '그 자리 맨 위 요소'에 떨어진 클릭만 받음.
+    // 바깥 틀·설명 문단에 직접 보낸 클릭은 무시 → 커서가 사진 아래 본문에 남아 글이 거기로 감. 설명 칸은 사진이 골라진 뒤에만
+    if (cfg.caption === 'real' && img) {
+      if (e.target !== document.elementFromPoint(e.clientX, e.clientY)) { mock.captionClickIgnored++; return; }
+      var capOpen = p && p.closest('.se-caption');
+      if (capOpen && !capOpen.classList.contains('show')) { mock.captionClickIgnored++; return; }
+    }
     canvas.querySelectorAll('.se-caption.show, .img-tools.show').forEach(function (n) {
       if (!img || !img.contains(n)) n.classList.remove('show');
     });
+    canvas.querySelectorAll('.mock-img-toolbar').forEach(function (n) { if (!img || !img.contains(n)) n.remove(); });
     if (img) {
       var capBox = img.querySelector('.se-caption');
       if (capBox) capBox.classList.add('show');
+      if (capBox && !(p && capBox.contains(p))) imgToolbar(img, true); else imgToolbar(img, false);
       img.querySelector('.img-tools').classList.add('show');
     }
     if (p) { setCaret(p); focusBuffer(); }
@@ -426,6 +452,13 @@
     });
     insertAfterCaret(comp);
     newParagraphAfter(comp, '본문');
+    // caption=real: 올린 직후 사진은 골라진 채(설명 칸 보임)인데 커서는 사진 아래 새 본문 줄에 있음(2026-10-09 실측)
+    if (cfg.caption === 'real') {
+      var capNow = comp.querySelector('.se-caption');
+      if (capNow) capNow.classList.add('show');
+      imgToolbar(comp, true);
+      comp.querySelector('.img-tools').classList.add('show');
+    }
   }
 
   function showLayoutPopup(files) {
@@ -1048,7 +1081,7 @@
     var fin = reports.filter(function (r) { return r['최종']; }).map(function (r) { return r['최종']; }).pop() || null;
     var failed = Object.keys(last).filter(function (k) { return last[k]['상태'] === '실패'; });
     return { 끝: fin, 실패: failed, 단계: last, 모의: mock.state(), 동영상정보: mock.videoInfo, 완료거절: mock.videoSubmitRefused,
-      장소클릭무시: mock.placeClicksIgnored || 0, 창선택: mock.draftChoice || null };
+      장소클릭무시: mock.placeClicksIgnored || 0, 창선택: mock.draftChoice || null, 설명클릭무시: mock.captionClickIgnored || 0 };
   }
   window.__harness = { makeSampleFiles: makeSampleFiles, run: run, fakeTransport: fakeTransport, reports: reports, claims: claims, fakeJob: fakeJob, wrongNext: false, hangFiles: 0, refuseMark: false, diags: [], summary: summary };
   box.addEventListener('click', function (e) {
